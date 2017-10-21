@@ -108,15 +108,16 @@ def conv_layer_1D(inputs, kernel_size, stride, num_features, idx, linear = False
     conv_rect = tf.nn.elu(conv_biased,name='{0}_conv'.format(idx))
     return conv_rect
 
-def transpose_conv_layer_1D(inputs, kernel_size, stride, num_features, idx, linear = False):
+def transpose_conv_layer_1D(inputs, kernel_size, stride, num_features, idx, linear=False):
   with tf.variable_scope('{0}_trans_conv'.format(idx)) as scope:
-    input_channels = inputs.get_shape()[-1]
-    
+    input_shape = inputs.get_shape()
+    input_channels = input_shape[-1]
     weights = _variable_with_weight_decay('weights', shape=[1,kernel_size,num_features,input_channels], stddev=0.01, wd=FLAGS.weight_decay)
     biases = _variable_on_cpu('biases',[num_features],tf.constant_initializer(0.01))
-    batch_size = tf.shape(inputs)[0]
+    
+    batch_size = input_shape[0]
     inputs = tf.expand_dims(inputs, 1)
-    output_shape = tf.stack([tf.shape(inputs)[0], 1, tf.shape(inputs)[1]*stride, num_features]) 
+    output_shape = tf.stack([input_shape[0], 1, input_shape[1]*stride, num_features]) 
     deconv = tf.nn.conv2d_transpose(inputs, filter=weights, output_shape=output_shape, strides=[1, 1, stride, 1], padding='SAME')
     deconv = tf.squeeze(deconv, [1]) #removes the first dummy dimension
     conv_biased = tf.nn.bias_add(deconv, biases)

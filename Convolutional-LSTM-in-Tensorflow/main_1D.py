@@ -9,7 +9,7 @@ from fits_reader import *
 import bouncing_balls as b
 import layer_def as ld
 from ConvLSTM1D import BasicConvLSTMCell
-
+import matplotlib.pyplot as plt
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('train_dir', './checkpoints/train_store_conv_lstm',
@@ -72,8 +72,11 @@ def network(inputs, hidden, lstm=True):
     y_1 = ld.conv_layer_1D(y_0, 3, 1, 8, "encode_{}".format(i+4))
   #import IPython; IPython.embed()
   dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
+  #import IPython; IPython.embed()
   for i in xrange(1,9,2):
+    #print(dconv.get_shape())
     dconv = decode_stack(dconv, i)
+  #import IPython; IPython.embed()
   # x_1 
   x_1 = ld.transpose_conv_layer_1D(dconv, 5, 2, 1, "decode_{}".format(i+3), True) # set activation to linear
 
@@ -161,7 +164,7 @@ def train():
       t = time.time()
       _, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
-
+      #print(step)
       if step%100 == 0 and step != 0:
         summary_str = sess.run(summary_op, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
         summary_writer.add_summary(summary_str, step) 
@@ -180,7 +183,7 @@ def train():
         print("now saving sample!")
         dat_gif = dat
         ims = sess.run([x_unwrap_g],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
-        ims = ims[0].squeeze()
+        ims = ims[0][0].squeeze()
         print(ims.shape)
         plt.imshow(ims, aspect='auto')
         plt.savefig(sample_dir+'step_{}.png'.format(step))
