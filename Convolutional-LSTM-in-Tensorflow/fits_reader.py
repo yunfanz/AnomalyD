@@ -24,7 +24,7 @@ def load_batch(batch_size, files, index):
 	for i in range(index, index+batch_size):
 		batch.append(fitsio.read(files[i]))
 	batch = np.stack(batch, axis=0)
-	batch = batch[...,np.newaxis]
+	batch = batch[...,np.newaxis]*1.e-10
 	return batch
 
 

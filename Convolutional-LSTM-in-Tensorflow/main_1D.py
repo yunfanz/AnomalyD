@@ -22,11 +22,11 @@ tf.app.flags.DEFINE_integer('seq_start', 5,
                             """ start of seq generation""")
 tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
-tf.app.flags.DEFINE_float('keep_prob', .8,
+tf.app.flags.DEFINE_float('keep_prob', .9,
                             """for dropout""")
 tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
-tf.app.flags.DEFINE_integer('batch_size', 16,
+tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
 tf.app.flags.DEFINE_float('weight_init', .1,
                             """weight init for fully connected layers""")
@@ -155,7 +155,7 @@ def train():
     graph_def = sess.graph.as_graph_def(add_shapes=True)
     summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph_def=graph_def)
     files = find_files(FLAGS.data_dir)
-    sample_dir = FLAGS.data_dir + '/samples/'
+    sample_dir = FLAGS.train_dir + '/samples/'
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in xrange(FLAGS.max_step):
@@ -184,7 +184,7 @@ def train():
         dat_gif = dat
         ims = sess.run([x_unwrap_g],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
         ims = ims[0][0].squeeze()
-        print(ims.shape)
+        plt.figure()
         plt.imshow(ims, aspect='auto')
         plt.savefig(sample_dir+'step_{}.png'.format(step))
 
