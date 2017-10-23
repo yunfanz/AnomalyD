@@ -99,7 +99,7 @@ def conv_layer_1D(inputs, kernel_size, stride, num_features, idx, linear = False
     input_channels = inputs.get_shape()[-1]
 
     weights = _variable_with_weight_decay('weights', shape=[kernel_size,input_channels,num_features],stddev=0.01, wd=FLAGS.weight_decay)
-    biases = _variable_on_cpu('biases',[num_features],tf.constant_initializer(0.01))
+    biases = tf.get_variable('biases',[num_features],tf.constant_initializer(0.01))
 
     conv = tf.nn.conv1d(inputs, weights, stride=stride, padding='SAME')
     conv_biased = tf.nn.bias_add(conv, biases)
@@ -113,7 +113,7 @@ def transpose_conv_layer_1D(inputs, kernel_size, stride, num_features, idx, line
     input_shape = inputs.get_shape()
     input_channels = input_shape[-1]
     weights = _variable_with_weight_decay('weights', shape=[1,kernel_size,num_features,input_channels], stddev=0.01, wd=FLAGS.weight_decay)
-    biases = _variable_on_cpu('biases',[num_features],tf.constant_initializer(0.01))
+    biases = tf.get_variable('biases',[num_features],tf.constant_initializer(0.01))
     
     batch_size = input_shape[0]
     inputs = tf.expand_dims(inputs, 1)
