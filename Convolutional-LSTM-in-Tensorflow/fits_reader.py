@@ -20,11 +20,13 @@ def find_files(directory, pattern='*.fits', sortby='shuffle'):
 
 def load_batch(batch_size, files, index):
 	batch = []
+        if index % 64000 == 0:
+            np.random.shuffle(files)
 	index = index % len(files)
 	for i in range(index, index+batch_size):
 		batch.append(fitsio.read(files[i]))
 	batch = np.stack(batch, axis=0)
-	batch = batch[...,np.newaxis]*1.e-10
+	batch = batch[...,np.newaxis]/np.amax(batch)
 	return batch
 
 

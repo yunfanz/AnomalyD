@@ -22,7 +22,7 @@ tf.app.flags.DEFINE_integer('seq_start', 5,
                             """ start of seq generation""")
 tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
-tf.app.flags.DEFINE_float('keep_prob', .9,
+tf.app.flags.DEFINE_float('keep_prob', .99,
                             """for dropout""")
 tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
