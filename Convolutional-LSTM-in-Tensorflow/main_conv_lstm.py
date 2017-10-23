@@ -1,10 +1,10 @@
 
 import os.path
 import time
-
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-import cv2
+#import cv2
 
 import bouncing_balls as b
 import layer_def as ld
@@ -29,7 +29,7 @@ tf.app.flags.DEFINE_integer('batch_size', 16,
 tf.app.flags.DEFINE_float('weight_init', .1,
                             """weight init for fully connected layers""")
 
-fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
+#fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
   dat = np.zeros((batch_size, seq_length, shape, shape, 3))
@@ -162,17 +162,21 @@ def train():
 
         # make video
         print("now generating video!")
-        video = cv2.VideoWriter()
-        success = video.open("generated_conv_lstm_video.mov", fourcc, 4, (180, 180), True)
+        
+        #video = cv2.VideoWriter()
+        #success = video.open("generated_conv_lstm_video.mov", fourcc, 4, (180, 180), True)
         dat_gif = dat
         ims = sess.run([x_unwrap_g],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
-        ims = ims[0][0]
-        print(ims.shape)
-        for i in xrange(50 - FLAGS.seq_start):
-          x_1_r = np.uint8(np.maximum(ims[i,:,:,:], 0) * 255)
-          new_im = cv2.resize(x_1_r, (180,180))
-          video.write(new_im)
-        video.release()
+        ims = ims[0][0][6]
+        plt.figure()
+        plt.imshow(ims)
+        plt.savefig('ball_samples/step_{}.png'.format(step))
+        #print(ims.shape)
+        #for i in xrange(50 - FLAGS.seq_start):
+        #  x_1_r = np.uint8(np.maximum(ims[i,:,:,:], 0) * 255)
+        #  new_im = cv2.resize(x_1_r, (180,180))
+        #  video.write(new_im)
+        #video.release()
 
 
 def main(argv=None):  # pylint: disable=unused-argument

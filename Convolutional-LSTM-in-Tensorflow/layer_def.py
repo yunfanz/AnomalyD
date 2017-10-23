@@ -70,7 +70,7 @@ def conv_layer(inputs, kernel_size, stride, num_features, idx, linear = False):
     input_channels = inputs.get_shape()[3]
 
     weights = _variable_with_weight_decay('weights', shape=[kernel_size,kernel_size,input_channels,num_features],stddev=0.01, wd=FLAGS.weight_decay)
-    biases = _variable_on_cpu('biases',[num_features],tf.constant_initializer(0.01))
+    biases = tf.get_variable('biases',[num_features],tf.constant_initializer(0.01))
 
     conv = tf.nn.conv2d(inputs, weights, strides=[1, stride, stride, 1], padding='SAME')
     conv_biased = tf.nn.bias_add(conv, biases)
@@ -84,7 +84,7 @@ def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, linear 
     input_channels = inputs.get_shape()[3]
     
     weights = _variable_with_weight_decay('weights', shape=[kernel_size,kernel_size,num_features,input_channels], stddev=0.01, wd=FLAGS.weight_decay)
-    biases = _variable_on_cpu('biases',[num_features],tf.constant_initializer(0.01))
+    biases = tf.get_variable('biases',[num_features],tf.constant_initializer(0.01))
     batch_size = tf.shape(inputs)[0]
     output_shape = tf.stack([tf.shape(inputs)[0], tf.shape(inputs)[1]*stride, tf.shape(inputs)[2]*stride, num_features]) 
     conv = tf.nn.conv2d_transpose(inputs, weights, output_shape, strides=[1,stride,stride,1], padding='SAME')
@@ -99,7 +99,7 @@ def conv_layer_1D(inputs, kernel_size, stride, num_features, idx, linear = False
     input_channels = inputs.get_shape()[-1]
 
     weights = _variable_with_weight_decay('weights', shape=[kernel_size,input_channels,num_features],stddev=0.01, wd=FLAGS.weight_decay)
-    biases = _variable_on_cpu('biases',[num_features],tf.constant_initializer(0.01))
+    biases = tf.get_variable('biases',[num_features],tf.constant_initializer(0.01))
 
     conv = tf.nn.conv1d(inputs, weights, stride=stride, padding='SAME')
     conv_biased = tf.nn.bias_add(conv, biases)
@@ -113,7 +113,7 @@ def transpose_conv_layer_1D(inputs, kernel_size, stride, num_features, idx, line
     input_shape = inputs.get_shape()
     input_channels = input_shape[-1]
     weights = _variable_with_weight_decay('weights', shape=[1,kernel_size,num_features,input_channels], stddev=0.01, wd=FLAGS.weight_decay)
-    biases = _variable_on_cpu('biases',[num_features],tf.constant_initializer(0.01))
+    biases = tf.get_variable('biases',[num_features],tf.constant_initializer(0.01))
     
     batch_size = input_shape[0]
     inputs = tf.expand_dims(inputs, 1)
@@ -137,7 +137,7 @@ def fc_layer(inputs, hiddens, idx, flat = False, linear = False):
       inputs_processed = inputs
     
     weights = _variable_with_weight_decay('weights', shape=[dim,hiddens],stddev=FLAGS.weight_init, wd=FLAGS.weight_decay)
-    biases = _variable_on_cpu('biases', [hiddens], tf.constant_initializer(FLAGS.weight_init))
+    biases = tf.get_variable('biases', [hiddens], tf.constant_initializer(FLAGS.weight_init))
     if linear:
       return tf.add(tf.matmul(inputs_processed,weights),biases,name=str(idx)+'_fc')
   
