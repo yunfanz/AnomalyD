@@ -1,7 +1,7 @@
 from __future__ import print_function
 import os.path
 import time
-
+import math
 import numpy as np
 import tensorflow as tf
 #import cv2
@@ -22,15 +22,14 @@ tf.app.flags.DEFINE_integer('seq_start', 5,
                             """ start of seq generation""")
 tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
-tf.app.flags.DEFINE_float('keep_prob', .99,
+tf.app.flags.DEFINE_float('keep_prob', 1.,
                             """for dropout""")
 tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
 tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
-tf.app.flags.DEFINE_float('weight_init', .1,
-                            """weight init for fully connected layers""")
-
+tf.app.flags.DEFINE_boolean('resume', False,
+                            """whether to load saved wieghts""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
@@ -63,7 +62,8 @@ def network(inputs, hidden, lstm=True):
   
   if lstm:
     # conv lstm cell 
-    with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
+    with tf.variable_scope('conv_lstm', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
       cell = BasicConvLSTMCell([16,], [5,], 4)
       if hidden is None:
         hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
@@ -84,7 +84,16 @@ def network(inputs, hidden, lstm=True):
 
 # make a template for reuse
 network_template = tf.make_template('network', network)
-
+def _plot_samples(samples, fname):
+    batch_size = samples.shape[0]
+    plt.figure(1, figsize=(16,10))
+    n_columns = 4
+    n_rows = min(math.ceil(batch_size / n_columns) + 1, 6)
+    for i in range(min(batch_size, n_columns*n_rows)):
+        plt.subplot(n_rows, n_columns, i+1)
+        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto')
+    print('saving', fname)
+    plt.savefig(fname)
 def train():
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
@@ -93,7 +102,8 @@ def train():
 
     # possible dropout inside
     keep_prob = tf.placeholder("float")
-    x_dropout = tf.nn.dropout(x, keep_prob)
+    #x_dropout = tf.nn.dropout(x, keep_prob)
+    x_dropout = x
 
     # create network
     x_unwrap = []
@@ -114,12 +124,13 @@ def train():
     # this part will be used for generating video
     x_unwrap_g = []
     hidden_g = None
-    for i in xrange(32):
+    for i in xrange(30):
       if i < FLAGS.seq_start:
         x_1_g, hidden_g = network_template(x_dropout[:,i,:,:], hidden_g)
+        x_unwrap_g.append(x_dropout[:,i+1,:,:])
       else:  #conditional generation
         x_1_g, hidden_g = network_template(x_1_g, hidden_g)
-      x_unwrap_g.append(x_1_g)
+        x_unwrap_g.append(x_1_g)
 
     # pack them generated ones
     x_unwrap_g = tf.stack(x_unwrap_g)
@@ -148,9 +159,17 @@ def train():
     sess = tf.Session()
 
     # init if this is the very time training
-    print("init network from scratch")
+    
     sess.run(init)
-
+    if FLAGS.resume:
+      latest = tf.train.latest_checkpoint(FLAGS.train_dir)
+      if not latest:
+          print("No checkpoint to continue from in", FLAGS.train_dir)
+          sys.exit(1)
+      print("resume", latest)
+      saver.restore(sess, latest)
+    else:
+      print("init network from scratch")
     # Summary op
     graph_def = sess.graph.as_graph_def(add_shapes=True)
     summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph_def=graph_def)
@@ -161,6 +180,7 @@ def train():
     for step in xrange(FLAGS.max_step):
       #dat = generate_bouncing_ball_sample(FLAGS.batch_size, FLAGS.seq_length, 32, FLAGS.num_balls)
       dat = load_batch(FLAGS.batch_size, files, step)
+      #import IPython; IPython.embed()
       t = time.time()
       _, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
@@ -182,11 +202,8 @@ def train():
         # make video
         print("now saving sample!")
         dat_gif = dat
-        ims = sess.run([x_unwrap_g],feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
-        ims = ims[0][0].squeeze()
-        plt.figure()
-        plt.imshow(ims, aspect='auto')
-        plt.savefig(sample_dir+'step_{}.png'.format(step))
+        ims = sess.run(x_unwrap_g,feed_dict={x:dat_gif, keep_prob:FLAGS.keep_prob})
+        _plot_samples(ims.squeeze(), sample_dir+'step_{}.png'.format(step))
 
 
 def main(argv=None):  # pylint: disable=unused-argument
