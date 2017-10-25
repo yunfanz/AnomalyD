@@ -49,7 +49,7 @@ def decode_stack(inputs, i):
   conv2 = ld.transpose_conv_layer_1D(conv1, 3, 1, 8, "decode_{}".format(i+2))
   return conv2
 
-def network(inputs, hidden, lstm=True):
+def network(inputs, hidden, lstm_depth=4):
   #inputs is 3D tensor (batch, )
   conv1 = ld.conv_layer_1D(inputs, 5, 2, 8, "encode_1")
   # conv2
@@ -60,16 +60,15 @@ def network(inputs, hidden, lstm=True):
   conv = ld.conv_layer_1D(conv, 1, 1, 4, "encode_{}".format(i+3))
   y_0 = conv
   
-  if lstm:
+  for l in range(lstm_depth):
     # conv lstm cell 
-    with tf.variable_scope('conv_lstm', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    with tf.variable_scope('conv_lstm_{}'.format(l), initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
     #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
       cell = BasicConvLSTMCell([16,], [5,], 4)
       if hidden is None:
         hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
-      y_1, hidden = cell(y_0, hidden)
-  else:
-    y_1 = ld.conv_layer_1D(y_0, 3, 1, 8, "encode_{}".format(i+4))
+      y_0, _ = cell(y_0, hidden)
+  y_1 = y_0
   #import IPython; IPython.embed()
   dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
   #import IPython; IPython.embed()

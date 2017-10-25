@@ -98,7 +98,7 @@ class BasicConvLSTMCell(ConvRNNCell):
         new_state = tf.concat(axis=2, values=[new_c, new_h])
       return new_h, new_state
 
-def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
+def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None, stride=1):
   """convolution:
   Args:
     args: a 4D Tensor or a list of 4D, batch x n, Tensors.
@@ -130,9 +130,9 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
     matrix = tf.get_variable(
         "Matrix", [filter_size[0], total_arg_size_depth, num_features], dtype=dtype)
     if len(args) == 1:
-      res = tf.nn.conv1d(args[0], matrix, stride=1, padding='SAME')
+      res = tf.nn.conv1d(args[0], matrix, stride=stride, padding='SAME')
     else:
-      res = tf.nn.conv1d(tf.concat(axis=2, values=args), matrix, stride=1, padding='SAME')
+      res = tf.nn.conv1d(tf.concat(axis=2, values=args), matrix, stride=stride, padding='SAME')
     if not bias:
       return res
     bias_term = tf.get_variable(
