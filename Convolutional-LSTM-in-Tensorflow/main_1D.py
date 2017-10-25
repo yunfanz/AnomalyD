@@ -37,6 +37,9 @@ def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
   for i in xrange(batch_size):
     dat[i, :, :, :, :] = b.bounce_vec(32, num_balls, seq_length)
   return dat 
+
+def lrelu(x, leak=0.2, name="lrelu"):
+  return tf.maximum(x, leak*x)
 def encode_stack(inputs, i):
   conv1 = ld.conv_layer_1D(inputs, 3, 2, 8, "encode_{}".format(i+1))
   # conv2
