@@ -44,14 +44,12 @@ def encode_stack(inputs, i):
   conv1 = ld.conv_layer_1D(inputs, 3, 2, 8, "encode_{}".format(i+1))
   # conv2
   conv2 = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_{}".format(i+2))
-  conv2 = lrelu(conv2)
   return conv2
 
 def decode_stack(inputs, i):
   conv1 = ld.transpose_conv_layer_1D(inputs, 3, 2, 8, "decode_{}".format(i+1))
   # conv2
   conv2 = ld.transpose_conv_layer_1D(conv1, 3, 1, 8, "decode_{}".format(i+2))
-  conv2 = lrelu(conv2)
   return conv2
 
 def network(inputs, hidden, lstm=True):
@@ -59,7 +57,6 @@ def network(inputs, hidden, lstm=True):
   conv1 = ld.conv_layer_1D(inputs, 5, 2, 8, "encode_1")
   # conv2
   conv = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_2")
-  conv = lrelu(conv)
   for i in xrange(2,10,2):
     conv = encode_stack(conv, i)
 
@@ -78,7 +75,7 @@ def network(inputs, hidden, lstm=True):
     y_1 = ld.conv_layer_1D(y_0, 3, 1, 8, "encode_{}".format(i+4))
   #import IPython; IPython.embed()
   dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
-  dconv = lrelu(dconv)
+  #import IPython; IPython.embed()
   for i in xrange(1,9,2):
     #print(dconv.get_shape())
     dconv = decode_stack(dconv, i)
