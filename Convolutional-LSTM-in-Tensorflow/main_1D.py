@@ -85,8 +85,49 @@ def network(inputs, hidden, lstm=True):
 
   return x_1, hidden
 
+def stacked_network(inputs, hidden, lstm=True):
+  #inputs is 3D tensor (batch, )
+  conv1 = ld.conv_layer_1D(inputs, 5, 2, 8, "encode_1")
+  # conv2
+  conv = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_2")
+  for i in xrange(2,10,2):
+    conv = encode_stack(conv, i)
+
+  conv = ld.conv_layer_1D(conv, 1, 1, 4, "encode_{}".format(i+3))
+
+  if lstm:
+    # conv lstm cell 
+    with tf.variable_scope('conv_lstm', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+      cell = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
+      if hidden is None:
+        hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
+      y_0, hidden = cell(conv, hidden)
+    # stacked conv lstm
+    with tf.variable_scope('conv_lstm_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+      cell1 = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
+      y_2, _ = cell1(y_1, hidden)
+    with tf.variable_scope('conv_lstm_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+      cell2 = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
+      y_3, _ = cell2(y_2, hidden)
+    with tf.variable_scope('conv_lstm_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+      cell3 = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
+      y_1, _ = cell3(y_3, hidden)
+  else:
+    y_1 = ld.conv_layer_1d(conv, 3, 1, 8, "encode_{}".format(i+4))
+  
+  dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
+  
+  for i in xrange(1,9,2):
+    dconv = decode_stack(dconv, i)
+
+  # x_1 
+  x_1 = ld.transpose_conv_layer_1D(dconv, 5, 2, 1, "decode_{}".format(i+3), True) # set activation to linear
+
+  return x_1, hidden
+
 # make a template for reuse
-network_template = tf.make_template('network', network)
+network_template = tf.make_template('stacked_network', stacked_network)
+
 def _plot_samples(samples, fname):
     batch_size = samples.shape[0]
     plt.figure(1, figsize=(16,10))
@@ -97,6 +138,7 @@ def _plot_samples(samples, fname):
         plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto')
     print('saving', fname)
     plt.savefig(fname)
+
 def train():
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
