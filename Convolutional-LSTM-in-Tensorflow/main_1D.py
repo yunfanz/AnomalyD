@@ -63,14 +63,22 @@ def network(inputs, hidden, lstm_depth=4):
   conv = ld.conv_layer_1D(conv, 1, 1, 4, "encode_{}".format(i+3))
   y_0 = conv
   
-  for l in range(lstm_depth):
-    # conv lstm cell 
-    with tf.variable_scope('conv_lstm_{}'.format(l), initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+
+  with tf.variable_scope('conv_lstm_0', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
     #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
       cell = BasicConvLSTMCell([16,], [5,], 4)
       if hidden is None:
         hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
       y_0, _ = cell(y_0, hidden)
+
+
+  for l in range(1, lstm_depth):
+    # conv lstm cell 
+    with tf.variable_scope('conv_lstm_{}'.format(l), initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
+      cell = BasicConvLSTMCell([16,], [5,], 4)
+      y_0, _ = cell(y_0, hidden)
+
   y_1 = y_0
   #import IPython; IPython.embed()
   dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
@@ -209,9 +217,10 @@ def train():
 
 
 def main(argv=None):  # pylint: disable=unused-argument
-  if tf.gfile.Exists(FLAGS.train_dir):
-    tf.gfile.DeleteRecursively(FLAGS.train_dir)
-  tf.gfile.MakeDirs(FLAGS.train_dir)
+  if not FLAGS.resume:
+    if tf.gfile.Exists(FLAGS.train_dir):
+      tf.gfile.DeleteRecursively(FLAGS.train_dir)
+    tf.gfile.MakeDirs(FLAGS.train_dir)
   train()
 
 if __name__ == '__main__':
