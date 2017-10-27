@@ -67,8 +67,11 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
     tf.add_to_collection('losses', weight_decay)
   return var
 
-def conv_layer(inputs, kernel_size, stride, num_features, idx, linear = False):
-  with tf.variable_scope('{0}_conv'.format(idx)) as scope:
+def lrelu(x, leak=0.2, name="lrelu"):
+  return tf.maximum(x, leak*x)
+
+def conv2d(inputs, num_features, name, kernel_size=3, stride=1, linear=False):
+  with tf.variable_scope(name) as scope:
     input_channels = inputs.get_shape()[3]
 
     weights = _variable_with_weight_decay('weights', shape=[kernel_size,kernel_size,input_channels,num_features],stddev=0.01, wd=FLAGS.weight_decay)
@@ -78,7 +81,7 @@ def conv_layer(inputs, kernel_size, stride, num_features, idx, linear = False):
     conv_biased = tf.nn.bias_add(conv, biases)
     if linear:
       return conv_biased
-    conv_rect = tf.nn.elu(conv_biased,name='{0}_conv'.format(idx))
+    conv_rect = tf.nn.elu(conv_biased, name=name)
     return conv_rect
 
 def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, linear = False):

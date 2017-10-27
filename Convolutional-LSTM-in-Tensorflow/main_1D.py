@@ -38,8 +38,7 @@ def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
     dat[i, :, :, :, :] = b.bounce_vec(32, num_balls, seq_length)
   return dat 
 
-def lrelu(x, leak=0.2, name="lrelu"):
-  return tf.maximum(x, leak*x)
+
 def encode_stack(inputs, i):
   conv1 = ld.conv_layer_1D(inputs, 3, 2, 8, "encode_{}".format(i+1))
   # conv2
@@ -104,7 +103,21 @@ def _plot_samples(samples, fname):
         plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto')
     print('saving', fname)
     plt.savefig(fname)
-def train():
+
+def discriminator(image, df_dim=16, reuse=False):
+  if reuse:
+    tf.get_variable_scope().reuse_variables()
+
+    h0 = conv2d(image, df_dim, name='d_h0_conv')
+    h1 = conv2d(h0, df_dim*2, name='d_h1_conv')
+    h2 = conv2d(h1, df_dim*4, name='d_h2_conv')
+    h3 = conv2d(h2, df_dim*8, name='d_h3_conv')
+    h4 = linear(tf.reshape(h3, [FLAGS.batch_size, -1]), 1, 'd_h3_lin')
+
+    return tf.nn.sigmoid(h4), h4, h3
+
+
+def train(with_gan=False):
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
     # make inputs
@@ -146,12 +159,36 @@ def train():
     x_unwrap_g = tf.stack(x_unwrap_g)
     x_unwrap_g = tf.transpose(x_unwrap_g, [1,0,2,3])
 
-    # calc total loss (compare x_t to x_t+1)
-    loss = tf.nn.l2_loss(x[:,FLAGS.seq_start+1:,:,:] - x_unwrap[:,FLAGS.seq_start:,:,:])
-    tf.summary.scalar('loss', loss)
 
-    # training
-    train_op = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss)
+    img = x[:,FLAGS.seq_start+1:,:,:]
+    img_ = x_unwrap[:,FLAGS.seq_start:,:,:]
+    # calc total loss (compare x_t to x_t+1)
+    loss_l2 = tf.nn.l2_loss(img - img_)
+    tf.summary.scalar('loss_l2', loss_l2)
+    if with_gan:
+      with tf.variable_scope('discriminator'):
+        D_logits, D, D3 = discriminator(img, reuse=False)
+        D_logits_, D_, D3_ = discriminator(img_, reuse=True)
+        d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(D_logits, tf.ones_like(D)))
+        d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(D_logits_, tf.zeros_like(D_)))
+        d_loss = d_loss_real + d_loss_fake
+        g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(D_logits_, tf.ones_like(D_)))
+        D3_loss = tf.nn.l2(D3-D3_)
+        t_vars = tf.trainable_variables()
+        d_vars = [var for var in t_vars if 'd_' in var.name]
+        g_vars = [var for var in t_vars if 'd_' not in var.name]
+        tf.summary.scalar('loss_g', g_loss)
+        tf.summary.scalar('loss_d', d_loss)
+        tf.summary.scalar('loss_feature', D3_loss)
+        loss = loss_l2 + g_loss + 0.1*D3_loss
+        d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
+        g_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss, var_list=g_vars)
+
+        train_op = tf.group(d_optim, g_optim)
+
+    else:
+      # training
+      train_op = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss_l2)
     
     # List of all Variables
     variables = tf.global_variables()
