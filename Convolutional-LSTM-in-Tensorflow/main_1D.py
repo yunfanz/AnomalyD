@@ -29,7 +29,7 @@ tf.app.flags.DEFINE_float('lr', .001,
 tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
 tf.app.flags.DEFINE_boolean('resume', False,
-                            """whether to load saved wieghts""")
+                            """whether to load saved weights""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
@@ -85,48 +85,46 @@ def network(inputs, hidden, lstm=True):
 
   return x_1, hidden
 
-def stacked_network(inputs, hidden, lstm=True):
+def anomaly_network(inputs, encoder_state_1, encoder_state_2, encoder_state_3):
   #inputs is 3D tensor (batch, )
-  conv1 = ld.conv_layer_1D(inputs, 5, 2, 8, "encode_1")
-  # conv2
-  conv = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_2")
-  for i in xrange(2,10,2):
-    conv = encode_stack(conv, i)
-
-  conv = ld.conv_layer_1D(conv, 1, 1, 4, "encode_{}".format(i+3))
-
-  if lstm:
-    # conv lstm cell 
-    with tf.variable_scope('conv_lstm', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-      cell = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
-      if hidden is None:
-        hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
-      y_0, hidden = cell(conv, hidden)
-    # stacked conv lstm
-    with tf.variable_scope('conv_lstm_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-      cell1 = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
-      y_2, _ = cell1(y_1, hidden)
-    with tf.variable_scope('conv_lstm_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-      cell2 = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
-      y_3, _ = cell2(y_2, hidden)
-    with tf.variable_scope('conv_lstm_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-      cell3 = BasicConvLSTMCell.BasicConvLSTMCell([16,], [5,], 3)
-      y_1, _ = cell3(y_3, hidden)
-  else:
-    y_1 = ld.conv_layer_1d(conv, 3, 1, 8, "encode_{}".format(i+4))
+  conv = ld.conv_layer_1D(inputs, 5, 2, 8, "encode")
   
-  dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
+  # encoder convlstm 
+  with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    cell1 = BasicConvLSTMCell.BasicConvLSTMCell([256,], [5,], 3)
+    if encoder_state_1 is None:
+      encoder_state_1 = cell1.zero_state(FLAGS.batch_size, tf.float32) 
+    conv, encoder_state_1 = cell1(conv, encoder_state_1)
+  with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    cell2 = BasicConvLSTMCell.BasicConvLSTMCell([256,], [5,], 3)
+    if encoder_state_2 is None:
+      encoder_state_2 = cell2.zero_state(FLAGS.batch_size, tf.float32) 
+    conv, encoder_state_2 = cell2(conv, encoder_state_2)
+  with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    cell3 = BasicConvLSTMCell.BasicConvLSTMCell([256,], [5,], 3)
+    if encoder_state_3 is None:
+      encoder_state_3 = cell3.zero_state(FLAGS.batch_size, tf.float32) 
+    conv, encoder_state_3 = cell3(conv, encoder_state_3)
   
-  for i in xrange(1,9,2):
-    dconv = decode_stack(dconv, i)
+  # decoder convlstm 
+  with tf.variable_scope('conv_lstm_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    dcell1 = BasicConvLSTMCell.BasicConvLSTMCell([256,], [5,], 3)
+    dconv1, _ = dcell1(conv, encoder_state_1)
+  with tf.variable_scope('conv_lstm_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    dcell2 = BasicConvLSTMCell.BasicConvLSTMCell([256,], [5,], 3)
+    dconv2, _ = dcell2(dconv1, encoder_state_2)
+  with tf.variable_scope('conv_lstm_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    dcell3 = BasicConvLSTMCell.BasicConvLSTMCell([256,], [5,], 3)
+    dconv3 = tf.add(dconv1, dconv2)
+    dconv, _ = dcell3(dconv3, encoder_state_3)
 
-  # x_1 
-  x_1 = ld.transpose_conv_layer_1D(dconv, 5, 2, 1, "decode_{}".format(i+3), True) # set activation to linear
-
-  return x_1, hidden
+  # output
+  x_1 = ld.transpose_conv_layer_1D(dconv, 5, 2, 1, "output", True)
+  
+  return x_1, encoder_state_1, encoder_state_2, encoder_state_3
 
 # make a template for reuse
-network_template = tf.make_template('stacked_network', stacked_network)
+network_template = tf.make_template('stacked_network', anomaly_network)
 
 def _plot_samples(samples, fname):
     batch_size = samples.shape[0]
@@ -154,28 +152,31 @@ def train():
     x_unwrap = []
 
     # conv network
-    hidden = None
-    for i in xrange(FLAGS.seq_length-1):
+    encoder_state_1 = None
+    encoder_state_2 = None
+    encoder_state_3 = None
+    for i in range(FLAGS.seq_length-1):
       if i < FLAGS.seq_start:
-        x_1, hidden = network_template(x_dropout[:,i,:,:], hidden)
-      else: #conditional generation
-        x_1, hidden = network_template(x_1, hidden)
+        x_1, encoder_state_1, encoder_state_2, encoder_state_3 = network_template(x_dropout[:,i,:,:], encoder_state_1, encoder_state_2, encoder_state_3)
+      else:
+        x_1, encoder_state_1, encoder_state_2, encoder_state_3 = network_template(x_1, encoder_state_1, encoder_state_2, encoder_state_3)
       x_unwrap.append(x_1)
 
     # pack them all together 
     x_unwrap = tf.stack(x_unwrap)
     x_unwrap = tf.transpose(x_unwrap, [1,0,2,3])
 
-    # this part will be used for generating video
+    # this part will be used for generating images
     x_unwrap_g = []
-    hidden_g = None
-    for i in xrange(30):
+    encoder_state_1g = None
+    encoder_state_2g = None
+    encoder_state_3g = None
+    for i in range(32):
       if i < FLAGS.seq_start:
-        x_1_g, hidden_g = network_template(x_dropout[:,i,:,:], hidden_g)
-        x_unwrap_g.append(x_dropout[:,i+1,:,:])
-      else:  #conditional generation
-        x_1_g, hidden_g = network_template(x_1_g, hidden_g)
-        x_unwrap_g.append(x_1_g)
+        x_1_g, encoder_state_1g, encoder_state_2g, encoder_state_3g = network_template(x_dropout[:,i,:,:], encoder_state_1g, encoder_state_2g, encoder_state_3g)
+      else:
+        x_1_g, encoder_state_1g, encoder_state_2g, encoder_state_3g = network_template(x_1_g, encoder_state_1g, encoder_state_2g, encoder_state_3g)
+      x_unwrap_g.append(x_1_g)
 
     # pack them generated ones
     x_unwrap_g = tf.stack(x_unwrap_g)
