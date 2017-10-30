@@ -46,6 +46,13 @@ def gen_train_parallel(N, outdir):
         os.makedirs(outdir)
     _ = Parallel(n_jobs=8)(delayed(get_pulse)(outdir, i) for i in xrange(N))
 
+def gen_noise_corpus(N, outdir):
+
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    for i in xrange(N):
+        pulse = get_pulse(outdir, i, batch_size=0)
+
 if __name__ == "__main__":
     OUTDIR = "./Data/simu2/"
     gen_train_parallel(32000, OUTDIR)

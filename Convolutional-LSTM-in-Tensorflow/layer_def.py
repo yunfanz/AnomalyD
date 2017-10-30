@@ -131,8 +131,8 @@ def transpose_conv_layer_1D(inputs, kernel_size, stride, num_features, idx, line
     conv_rect = tf.nn.elu(conv_biased,name='{0}_transpose_conv'.format(idx))
     return conv_rect
 
-def fc_layer(inputs, hiddens, idx, flat = False, linear = False):
-  with tf.variable_scope('{0}_fc'.format(idx)) as scope:
+def fc_layer(inputs, hiddens, name, flat=False, linear=False):
+  with tf.variable_scope(name) as scope:
     input_shape = inputs.get_shape().as_list()
     if flat:
       dim = input_shape[1]*input_shape[2]*input_shape[3]
@@ -141,11 +141,11 @@ def fc_layer(inputs, hiddens, idx, flat = False, linear = False):
       dim = input_shape[1]
       inputs_processed = inputs
     
-    weights = _variable_with_weight_decay('weights', shape=[dim,hiddens],stddev=FLAGS.weight_init, wd=FLAGS.weight_decay)
-    biases = tf.get_variable('biases', [hiddens], initializer=tf.constant_initializer(FLAGS.weight_init))
+    weights = _variable_with_weight_decay('weights', shape=[dim,hiddens],stddev=0.01, wd=FLAGS.weight_decay)
+    biases = tf.get_variable('biases', [hiddens], initializer=tf.constant_initializer(0.01))
     if linear:
-      return tf.add(tf.matmul(inputs_processed,weights),biases,name=str(idx)+'_fc')
+      return tf.add(tf.matmul(inputs_processed,weights),biases,name=name)
   
     ip = tf.add(tf.matmul(inputs_processed,weights),biases)
-    return tf.nn.elu(ip,name=str(idx)+'_fc')
+    return tf.nn.elu(ip,name=name)
 

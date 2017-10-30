@@ -22,7 +22,7 @@ def load_batch(batch_size, files, index):
     batch = []
     if index % 30000 == 0:
         np.random.shuffle(files)
-    index = index % len(files)
+    index = index % (len(files)-batch_size)
     for i in range(index, index+batch_size):
         batch.append(fitsio.read(files[i]))
     batch = np.stack(batch, axis=0)

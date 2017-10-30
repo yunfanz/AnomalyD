@@ -38,6 +38,17 @@ def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
     dat[i, :, :, :, :] = b.bounce_vec(32, num_balls, seq_length)
   return dat 
 
+def generate_x_batch(batch_size, t, f, n_sig=2, ret=False, noise=True):
+    f_0 = tf.random_uniform(shape=[batch_size, n_sig,1,1],minval=0., maxval=512.) #in ms 
+    amp = tf.random_uniform(shape=[batch_size,n_sig,1,1],minval=0.25,maxval= 2.5)
+    width = tf.random_uniform(shape=[batch_size,n_sig,1,1],minval=1., maxval=20.)
+    slope = tf.random_uniform(shape=[batch_size,n_sig,1,1],minval=-15, maxval=15)
+    f0_all = f_0 + slope * t
+    pulse = tf.reduce_sum(amp*tf.exp(-0.5 * (f - f0_all) ** 2 / width ** 2.), axis=1)
+    if noise:
+        noise_level = 0.2
+        pulse += noise_level *tf.random_uniform(pulse.get_shape(), minval=0, maxval=1)
+    return pulse[..., tf.newaxis]
 
 def encode_stack(inputs, i):
   conv1 = ld.conv_layer_1D(inputs, 3, 2, 8, "encode_{}".format(i+1))
@@ -105,23 +116,25 @@ def _plot_samples(samples, fname):
     plt.savefig(fname)
 
 def discriminator(image, df_dim=16, reuse=False):
-  if reuse:
-    tf.get_variable_scope().reuse_variables()
+  with tf.variable_scope("discriminator") as scope:
+    if reuse:
+      scope.reuse_variables()
 
-    h0 = conv2d(image, df_dim, name='d_h0_conv')
-    h1 = conv2d(h0, df_dim*2, name='d_h1_conv')
-    h2 = conv2d(h1, df_dim*4, name='d_h2_conv')
-    h3 = conv2d(h2, df_dim*8, name='d_h3_conv')
-    h4 = linear(tf.reshape(h3, [FLAGS.batch_size, -1]), 1, 'd_h3_lin')
+    h0 = ld.conv2d(image, df_dim, name='d_h0_conv')
+    h1 = ld.conv2d(h0, df_dim*2, name='d_h1_conv')
+    h2 = ld.conv2d(h1, df_dim*4, name='d_h2_conv')
+    h3 = ld.conv2d(h2, df_dim*8, name='d_h3_conv')
+    h4 = ld.fc_layer(h3, 1, name='d_h3_lin', linear=True, flat=True)
 
     return tf.nn.sigmoid(h4), h4, h3
 
-
-def train(with_gan=False):
+def rms_loss(x):
+  return tf.sqrt(tf.reduce_mean(x**2))
+def train(with_gan=True, load_x=True):
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
-    # make inputs
     x = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
+
 
     # possible dropout inside
     keep_prob = tf.placeholder("float")
@@ -164,31 +177,46 @@ def train(with_gan=False):
     img_ = x_unwrap[:,FLAGS.seq_start:,:,:]
     # calc total loss (compare x_t to x_t+1)
     loss_l2 = tf.nn.l2_loss(img - img_)
+    #loss_l2 = rms_loss(img - img_) * 50
     tf.summary.scalar('loss_l2', loss_l2)
     if with_gan:
-      with tf.variable_scope('discriminator'):
-        D_logits, D, D3 = discriminator(img, reuse=False)
-        D_logits_, D_, D3_ = discriminator(img_, reuse=True)
-        d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(D_logits, tf.ones_like(D)))
-        d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(D_logits_, tf.zeros_like(D_)))
-        d_loss = d_loss_real + d_loss_fake
-        g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(D_logits_, tf.ones_like(D_)))
-        D3_loss = tf.nn.l2(D3-D3_)
-        t_vars = tf.trainable_variables()
-        d_vars = [var for var in t_vars if 'd_' in var.name]
-        g_vars = [var for var in t_vars if 'd_' not in var.name]
-        tf.summary.scalar('loss_g', g_loss)
-        tf.summary.scalar('loss_d', d_loss)
-        tf.summary.scalar('loss_feature', D3_loss)
-        loss = loss_l2 + g_loss + 0.1*D3_loss
-        d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
-        g_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss, var_list=g_vars)
-
-        train_op = tf.group(d_optim, g_optim)
+      
+      D, D_logits, D3 = discriminator(img, reuse=False)
+      D_, D_logits_, D3_ = discriminator(img_, reuse=True)
+      d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=D_logits, labels=tf.ones_like(D)))
+      d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=D_logits_, labels=tf.zeros_like(D_)))
+      d_loss = d_loss_real + d_loss_fake
+      g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=D_logits_, labels=tf.ones_like(D_)))
+      D3_loss = tf.nn.l2_loss(D3-D3_)
+      t_vars = tf.trainable_variables()
+      d_vars = [var for var in t_vars if 'd_' in var.name]
+      g_vars = [var for var in t_vars if 'd_' not in var.name]
+      tf.summary.scalar('loss_g', g_loss)
+      tf.summary.scalar('loss_d', d_loss)
+      tf.summary.scalar('loss_feature', D3_loss)
+      loss = g_loss #loss_l2 + g_loss + 0.001*D3_loss
+      d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
+      g_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss, var_list=g_vars)
+      #import IPython; IPython.embed()
+      train_op = tf.group(d_optim, g_optim)
 
     else:
       # training
-      train_op = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss_l2)
+      loss = loss_l2
+      train_op = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss)
+
+    # if True:
+      
+    #   D, D_logits, _= discriminator(img, reuse=False)
+    #   D_, D_logits_, _ = discriminator(tf.random_uniform(img.get_shape, max_val=0.2), reuse=True)
+    #   d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+    #                 logits=D_logits, labels=tf.ones_like(D)))
+    #   d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+    #                 logits=D_logits_, labels=tf.zeros_like(D_)))
+    #   d_loss = d_loss_real + d_loss_fake
     
     # List of all Variables
     variables = tf.global_variables()
@@ -226,14 +254,20 @@ def train(with_gan=False):
       os.makedirs(sample_dir)
     for step in xrange(FLAGS.max_step):
       #dat = generate_bouncing_ball_sample(FLAGS.batch_size, FLAGS.seq_length, 32, FLAGS.num_balls)
-      dat = load_batch(FLAGS.batch_size, files, step)
+      if load_x:
+        dat = load_batch(FLAGS.batch_size, files, step)
+      else:
+        tgen = tf.range(start=0., limit=FLAGS.seq_length,dtype=tf.float32)[tf.newaxis,tf.newaxis, ..., tf.newaxis]
+        fgen = tf.range(start=0., limit=512.,dtype=tf.float32)[tf.newaxis,tf.newaxis, tf.newaxis, ...]
+        dat = sess.run(generate_x_batch(FLAGS.batch_size, tgen, fgen))
+      fdict = {x:dat, keep_prob:FLAGS.keep_prob}
       #import IPython; IPython.embed()
       t = time.time()
-      _, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+      _, loss_r = sess.run([train_op, loss],feed_dict=fdict)
       elapsed = time.time() - t
       #print(step)
       if step%100 == 0 and step != 0:
-        summary_str = sess.run(summary_op, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+        summary_str = sess.run(summary_op, feed_dict=fdict)
         summary_writer.add_summary(summary_str, step) 
         print("time per batch is " + str(elapsed))
         print(step)
