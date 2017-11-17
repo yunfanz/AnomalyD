@@ -64,19 +64,19 @@ def decode_stack(inputs, i):
 
 def network(inputs, hidden, lstm_depth=4):
   #inputs is 3D tensor (batch, )
-  conv1 = ld.conv_layer_1D(inputs, 5, 2, 8, "encode_1")
+  conv1 = ld.conv_layer_1D(inputs, 7, 2, 8, "encode_1")
   # conv2
-  conv = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_2")
-  for i in xrange(2,10,2):
-    conv = encode_stack(conv, i)
-
-  conv = ld.conv_layer_1D(conv, 1, 1, 4, "encode_{}".format(i+3))
-  y_0 = conv
+  #conv = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_2")
+  # for i in xrange(2,4,2):
+  #   conv = encode_stack(conv, i)
+  #i = 1
+  #conv = ld.conv_layer_1D(conv, 1, 1, 8, "encode_{}".format(i+3))
+  y_0 = conv1
   
 
   with tf.variable_scope('conv_lstm_0', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
     #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
-      cell = BasicConvLSTMCell([16,], [5,], 4)
+      cell = BasicConvLSTMCell([256,], [5,], 8)
       if hidden is None:
         hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
       y_0, _ = cell(y_0, hidden)
@@ -86,19 +86,20 @@ def network(inputs, hidden, lstm_depth=4):
     # conv lstm cell 
     with tf.variable_scope('conv_lstm_{}'.format(l), initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
     #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
-      cell = BasicConvLSTMCell([16,], [5,], 4)
+      cell = BasicConvLSTMCell([256,], [5,], 8)
       y_0, _ = cell(y_0, hidden)
 
-  y_1 = y_0
+  dconv = y_0
   #import IPython; IPython.embed()
-  dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
+  #dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
   #import IPython; IPython.embed()
-  for i in xrange(1,9,2):
-    #print(dconv.get_shape())
-    dconv = decode_stack(dconv, i)
+  # for i in xrange(1,3,2):
+  #   #print(dconv.get_shape())
+  #   dconv = decode_stack(dconv, i)
   #import IPython; IPython.embed()
   # x_1 
-  x_1 = ld.transpose_conv_layer_1D(dconv, 5, 2, 1, "decode_{}".format(i+3), True) # set activation to linear
+  i = 1
+  x_1 = ld.transpose_conv_layer_1D(dconv, 7, 2, 1, "decode_{}".format(i+3), True) # set activation to linear
 
   return x_1, hidden
 
@@ -130,7 +131,7 @@ def discriminator(image, df_dim=16, reuse=False):
 
 def rms_loss(x):
   return tf.sqrt(tf.reduce_mean(x**2))
-def train(with_gan=True, load_x=True):
+def train(with_gan=False, load_x=True):
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
     x = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
@@ -197,7 +198,7 @@ def train(with_gan=True, load_x=True):
       tf.summary.scalar('loss_g', g_loss)
       tf.summary.scalar('loss_d', d_loss)
       tf.summary.scalar('loss_feature', D3_loss)
-      loss = g_loss #loss_l2 + g_loss + 0.001*D3_loss
+      loss = loss_l2 + g_loss + 0.001*D3_loss
       d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
       g_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss, var_list=g_vars)
       #import IPython; IPython.embed()
