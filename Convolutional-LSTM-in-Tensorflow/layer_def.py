@@ -68,10 +68,10 @@ def conv2d(inputs, kernel_size, stride, num_features, name, linear=False):
   with tf.variable_scope(name) as scope:
     input_channels = inputs.get_shape()[3]
 
-    weights = _variable_with_weight_decay('weights', shape=[kernel_size,kernel_size,input_channels,num_features],stddev=0.01, wd=FLAGS.weight_decay)
+    weights = _variable_with_weight_decay('weights', shape=[kernel_size[0],kernel_size[1],input_channels,num_features],stddev=0.01, wd=FLAGS.weight_decay)
     biases = tf.get_variable('biases',[num_features], initializer=tf.constant_initializer(0.01))
 
-    conv = tf.nn.conv2d(inputs, weights, strides=[1, stride, stride, 1], padding='SAME')
+    conv = tf.nn.conv2d(inputs, weights, strides=[1, stride[0], stride[1], 1], padding='SAME')
     conv_biased = tf.nn.bias_add(conv, biases)
     if linear:
       return conv_biased
@@ -125,9 +125,10 @@ def transpose_conv_layer_1D(inputs, kernel_size, stride, num_features, idx, line
     conv_rect = tf.nn.elu(conv_biased,name='{0}_transpose_conv'.format(idx))
     return conv_rect
 
-def fc_layer(inputs, hiddens, name, flat=False, linear=False):
+def fc_layer(inputs, hiddens, name, flat=False, linear=False, input_shape=None):
   with tf.variable_scope(name) as scope:
-    input_shape = inputs.get_shape().as_list()
+    if input_shape is None:
+      input_shape = inputs.get_shape().as_list()
     if flat:
       dim = input_shape[1]*input_shape[2]*input_shape[3]
       inputs_processed = tf.reshape(inputs, [-1,dim])

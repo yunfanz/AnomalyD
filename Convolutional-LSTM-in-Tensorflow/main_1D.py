@@ -14,7 +14,7 @@ from BasicConvLSTMCell2d import BasicConvLSTMCell2d
 import matplotlib.pyplot as plt
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', './checkpoints/train_store_conv_lstm',
+tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
                             """dir to store trained net""")
 tf.app.flags.DEFINE_string('data_dir', './Data',
                             """dir to load data""")
@@ -106,56 +106,76 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, 8, 2, 8, "encode")
-  
+  #conv = ld.conv2d(inputs, (8,8), (2,2), 8, "encode")
+  conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell1 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    cell1 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     if encoder_state is None:
       encoder_state = cell1.zero_state(FLAGS.batch_size, tf.float32) 
     conv1, encoder_state = cell1(conv, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell2 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    cell2 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     conv2, encoder_state = cell2(conv1, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell3 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    cell3 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     conv3, encoder_state = cell3(conv2, encoder_state)
   
   # past decoder convlstm 
   with tf.variable_scope('past_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell1 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    pcell1 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     if past_state is None:
       past_state = pcell1.zero_state(FLAGS.batch_size, tf.float32) 
     pconv1, past_state = pcell1(conv1, past_state)
   with tf.variable_scope('past_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell2 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    pcell2 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     pconv2, past_state = pcell2(conv2, past_state)
   with tf.variable_scope('past_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell3 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    pcell3 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     pconv3, past_state = pcell3(conv3, past_state)
 
   # future decoder convlstm 
   with tf.variable_scope('future_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell1 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    fcell1 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     if future_state is None:
       future_state = fcell1.zero_state(FLAGS.batch_size, tf.float32) 
     fconv1, future_state = fcell1(conv1, future_state)
   with tf.variable_scope('future_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell2 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    fcell2 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     fconv2, future_state = fcell2(conv2, future_state)
   with tf.variable_scope('future_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell3 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+    fcell3 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
     fconv3, future_state = fcell3(conv3, future_state)
 
   # present output
-  x_1 = ld.transpose_conv_layer(pconv3, 8, 2, 1, "present_output", True)
-  # future output
-  y_1 = ld.transpose_conv_layer(fconv3, 8, 2, 1, "future_output", True)
-
+  # x_1 = ld.transpose_conv_layer(pconv3, 8, 2, 1, "present_output", True)
+  # # future output
+  # y_1 = ld.transpose_conv_layer(fconv3, 8, 2, 1, "future_output", True)
+  x_1 = pconv3; y_1 = fconv3
   return x_1, y_1, encoder_state, past_state, future_state
 
 # make a template for reuse
 network_template = tf.make_template('network', network_2d)
+def discriminator(image, df_dim=16, reuse=False, fc_shape=None):
+  with tf.variable_scope("discriminator") as scope:
+    if reuse:
+      scope.reuse_variables()
+    image = tf.nn.avg_pool(image, 
+                                    ksize=[1, 1, 4, 1],
+                                    strides=[1, 1, 4, 1],
+                                    padding='SAME')
+    h0 = ld.conv2d(image, (3, 7),(1,4),df_dim, name='d_h0_conv')
+    h1 = ld.conv2d(h0, (3, 7),(1,2),df_dim*2, name='d_h1_conv')
+    h2 = ld.conv2d(h1, (3, 5),(1,2),df_dim*4, name='d_h2_conv')
+    h3 = ld.conv2d(h2, (3, 5),(1,2),df_dim*8, name='d_h3_conv')
+    h4 = ld.conv2d(h3, (3, 3),(2,2),df_dim*16, name='d_h4_conv')
+    h5 = ld.conv2d(h4, (3, 3),(1,1),df_dim*16, name='d_h5_conv')
+
+    #import IPython; IPython.embed()
+    h6 = ld.fc_layer(h5, 1, name='d_h6_lin', linear=True, flat=True, input_shape=fc_shape)
+
+    return tf.nn.sigmoid(h6), h6, h5
+
 
 def _plot_samples(samples, fname):
     batch_size = samples.shape[0]
@@ -185,17 +205,48 @@ def train(with_gan=True, load_x=True):
     future_state = None
     x_1, y_1, encoder_state, past_state, future_state = network_template(x_dropout[:,:FLAGS.seq_start,:,:], encoder_state, past_state, future_state)
 
-    past_loss = tf.nn.l2_loss(x[:,:FLAGS.seq_start,:,:] - x_1)
-    future_loss = tf.nn.l2_loss(x[:,FLAGS.seq_start:,:,:] - y_1)
-    loss = past_loss + future_loss
-    tf.summary.scalar('loss', loss)
+    past_loss_l2 = tf.nn.l2_loss(x[:,:FLAGS.seq_start,:,:] - x_1)
+    future_loss_l2 = tf.nn.l2_loss(x[:,FLAGS.seq_start:,:,:] - y_1)
 
-    # training
-    optimizer = tf.train.AdamOptimizer(FLAGS.lr)
-    gvs = optimizer.compute_gradients(loss)
-    # gradient clipping
-    capped_gvs = [(tf.clip_by_value(grad, -3., 3.), var) for grad, var in gvs]
-    train_op = optimizer.apply_gradients(capped_gvs)
+    
+    if with_gan:
+      img = x[:,FLAGS.seq_start:,:,:]
+      img_ = y_1
+      D, D_logits, D3 = discriminator(img, reuse=False)
+      #import IPython; IPython.embed()
+      D_, D_logits_, D3_ = discriminator(img_, reuse=True, fc_shape=D3.get_shape().as_list())
+      d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=D_logits, labels=tf.ones_like(D)))
+      d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=D_logits_, labels=tf.zeros_like(D_)))
+      d_loss = d_loss_real + d_loss_fake
+      g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+                    logits=D_logits_, labels=tf.ones_like(D_)))
+      D3_loss = tf.nn.l2_loss(D3-D3_)
+      t_vars = tf.trainable_variables()
+      d_vars = [var for var in t_vars if 'd_' in var.name]
+      g_vars = [var for var in t_vars if 'd_' not in var.name]
+      tf.summary.scalar('loss_g', g_loss)
+      tf.summary.scalar('loss_d', d_loss)
+      tf.summary.scalar('loss_feature', D3_loss)
+      loss = 0.05*(past_loss_l2 + future_loss_l2) + g_loss #+ 0.001*D3_loss
+      tf.summary.scalar('past_loss_l2', past_loss_l2)
+      tf.summary.scalar('future_loss_l2', future_loss_l2)
+      d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
+      g_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss, var_list=g_vars)
+      #import IPython; IPython.embed()
+      train_op = tf.group(d_optim, d_optim, g_optim)
+
+    else:
+      loss = past_loss_l2 + future_loss_l2
+      tf.summary.scalar('loss', loss)
+
+      # training
+      optimizer = tf.train.AdamOptimizer(FLAGS.lr)
+      gvs = optimizer.compute_gradients(loss)
+      # gradient clipping
+      capped_gvs = [(tf.clip_by_value(grad, -3., 3.), var) for grad, var in gvs]
+      train_op = optimizer.apply_gradients(capped_gvs)
 
     # List of all Variables
     variables = tf.global_variables()
