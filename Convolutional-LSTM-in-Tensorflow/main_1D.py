@@ -20,7 +20,7 @@ tf.app.flags.DEFINE_string('data_dir', './Data',
                             """dir to load data""")
 tf.app.flags.DEFINE_integer('seq_length', 16,
                             """size of hidden layer""")
-tf.app.flags.DEFINE_integer('seq_start', 8,
+tf.app.flags.DEFINE_integer('seq_start', 5,
                             """ start of seq generation""")
 tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
@@ -166,7 +166,10 @@ def train(with_gan=True, load_x=True):
 
     for i in range(FLAGS.seq_length-1):
       #conditional generation
-      concat = tf.concat([future, x_dropout[:,i,:,:]], 2)
+      if i < FLAGS.seq_start:
+        concat = tf.concat([future, x_dropout[:,i,:,:]], 2)
+      else:
+        concat = tf.concat([future, future], 2)
       future, encoder_state, decoder_state = network_template(concat, encoder_state, decoder_state)
       futures.append(future)
 
