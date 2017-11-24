@@ -104,58 +104,37 @@ def network(inputs, hidden, lstm_depth=4):
 
   return x_1, hidden
 
-def network_2d(inputs, encoder_state, past_state, future_state):
+def network_simple(inputs, encoder_state, decoder_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, 8, 2, 8, "encode")
+  conv = ld.conv_layer_1D(inputs, 8, 4, 8, "embedding")
   
   # encoder convlstm 
-  with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell1 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+  with tf.variable_scope('encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    cell1 = BasicConvLSTMCell([128,], [8,], 4)
     if encoder_state is None:
       encoder_state = cell1.zero_state(FLAGS.batch_size, tf.float32) 
     conv1, encoder_state = cell1(conv, encoder_state)
-  with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell2 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+  with tf.variable_scope('encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    cell2 = BasicConvLSTMCell([128,], [8,], 4)
     conv2, encoder_state = cell2(conv1, encoder_state)
-  with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell3 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
+  with tf.variable_scope('encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    cell3 = BasicConvLSTMCell([128,], [8,], 4)
     conv3, encoder_state = cell3(conv2, encoder_state)
-  
-  # past decoder convlstm 
-  with tf.variable_scope('past_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell1 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
-    if past_state is None:
-      past_state = pcell1.zero_state(FLAGS.batch_size, tf.float32) 
-    pconv1, past_state = pcell1(conv1, past_state)
-  with tf.variable_scope('past_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell2 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
-    pconv2, past_state = pcell2(conv2, past_state)
-  with tf.variable_scope('past_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell3 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
-    pconv3, past_state = pcell3(conv3, past_state)
 
-  # future decoder convlstm 
-  with tf.variable_scope('future_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell1 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
-    if future_state is None:
-      future_state = fcell1.zero_state(FLAGS.batch_size, tf.float32) 
-    fconv1, future_state = fcell1(conv1, future_state)
-  with tf.variable_scope('future_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell2 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
-    fconv2, future_state = fcell2(conv2, future_state)
-  with tf.variable_scope('future_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell3 = BasicConvLSTMCell2d([4, 256], [8, 8], 4)
-    fconv3, future_state = fcell3(conv3, future_state)
+  # decoder convlstm 
+  with tf.variable_scope('decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    fcell = BasicConvLSTMCell([128,], [8,], 4)
+    if decoder_state is None:
+      decoder_state = fcell.zero_state(FLAGS.batch_size, tf.float32) 
+    fconv, decoder_state = fcell(conv3, decoder_state)
 
-  # present output
-  x_1 = ld.transpose_conv_layer(pconv3, 8, 2, 1, "present_output", True)
   # future output
-  y_1 = ld.transpose_conv_layer(fconv3, 8, 2, 1, "future_output", True)
+  output = ld.transpose_conv_layer_1D(fconv, 8, 4, 1, "output", True)
 
-  return x_1, y_1, encoder_state, past_state, future_state
+  return output, encoder_state, decoder_state
 
 # make a template for reuse
-network_template = tf.make_template('network', network_2d)
+network_template = tf.make_template('network', network_simple)
 
 def _plot_samples(samples, fname):
     batch_size = samples.shape[0]
@@ -173,21 +152,31 @@ def train(with_gan=True, load_x=True):
   with tf.Graph().as_default():
     x = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
 
-
     # possible dropout inside
     keep_prob = tf.placeholder("float")
-    #x_dropout = tf.nn.dropout(x, keep_prob)
-    x_dropout = x
+    x_dropout = tf.nn.dropout(x, keep_prob)
 
+    # create network
+    futures = []
+    
     # conv network
     encoder_state = None
-    past_state = None
-    future_state = None
-    x_1, y_1, encoder_state, past_state, future_state = network_template(x_dropout[:,:FLAGS.seq_start,:,:], encoder_state, past_state, future_state)
+    decoder_state = None
+    future = x_dropout[:,0,:,:]
 
-    past_loss = tf.nn.l2_loss(x[:,:FLAGS.seq_start,:,:] - x_1)
-    future_loss = tf.nn.l2_loss(x[:,FLAGS.seq_start:,:,:] - y_1)
-    loss = past_loss + future_loss
+    for i in range(FLAGS.seq_length-1):
+      #conditional generation
+      concat = tf.concat([future, x_dropout[:,i,:,:]], 2)
+      future, encoder_state, decoder_state = network_template(concat, encoder_state, decoder_state)
+      futures.append(future)
+
+    # pack them all together 
+    futures = tf.stack(futures)
+    futures = tf.transpose(futures, [1,0,2,3])
+
+    # loss
+    future_gt = x_dropout[:,1:,:,:]
+    loss = tf.nn.l2_loss(future_gt - futures)
     tf.summary.scalar('loss', loss)
 
     # training
@@ -254,11 +243,9 @@ def train(with_gan=True, load_x=True):
         print("saved to " + FLAGS.train_dir)
 
         print("now saving sample!")
-        im_x, im_y = sess.run([x_1, y_1],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
-        _plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'step_{}_past_t.png'.format(step))
-        _plot_samples(im_x.squeeze(), sample_dir+'step_{}_past.png'.format(step))
-        _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
-        _plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
+        future_ims = sess.run(futures,feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+        _plot_samples(dat[:,1:,:,:].squeeze(), sample_dir+'step_{}_future_gt.png'.format(step))
+        _plot_samples(future_ims.squeeze(), sample_dir+'step_{}_future.png'.format(step))
 
 def main(argv=None):  # pylint: disable=unused-argument
   if not FLAGS.resume:
