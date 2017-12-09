@@ -106,52 +106,52 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  #conv = ld.conv2d(inputs, (8,8), (2,2), 8, "encode")
-  conv = inputs
+  conv = ld.conv2d(inputs, (4,8), (1,2), 4, "encode")
+  #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell1 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    cell1 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     if encoder_state is None:
       encoder_state = cell1.zero_state(FLAGS.batch_size, tf.float32) 
     conv1, encoder_state = cell1(conv, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell2 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    cell2 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     conv2, encoder_state = cell2(conv1, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell3 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    cell3 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     conv3, encoder_state = cell3(conv2, encoder_state)
   
   # past decoder convlstm 
   with tf.variable_scope('past_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell1 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    pcell1 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     if past_state is None:
       past_state = pcell1.zero_state(FLAGS.batch_size, tf.float32) 
     pconv1, past_state = pcell1(conv1, past_state)
   with tf.variable_scope('past_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell2 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    pcell2 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     pconv2, past_state = pcell2(conv2, past_state)
   with tf.variable_scope('past_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell3 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    pcell3 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     pconv3, past_state = pcell3(conv3, past_state)
 
   # future decoder convlstm 
   with tf.variable_scope('future_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell1 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    fcell1 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     if future_state is None:
       future_state = fcell1.zero_state(FLAGS.batch_size, tf.float32) 
     fconv1, future_state = fcell1(conv1, future_state)
   with tf.variable_scope('future_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell2 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    fcell2 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     fconv2, future_state = fcell2(conv2, future_state)
   with tf.variable_scope('future_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell3 = BasicConvLSTMCell2d([4, 512], [8, 8], 4)
+    fcell3 = BasicConvLSTMCell2d([8, 256], [8, 8], 4)
     fconv3, future_state = fcell3(conv3, future_state)
-
   # present output
-  # x_1 = ld.transpose_conv_layer(pconv3, 8, 2, 1, "present_output", True)
+  x_1 = ld.transpose_conv_layer(pconv3, 8, 2, 1, "present_output", True)
   # # future output
-  # y_1 = ld.transpose_conv_layer(fconv3, 8, 2, 1, "future_output", True)
-  x_1 = pconv3; y_1 = fconv3
+  y_1 = ld.transpose_conv_layer(fconv3, 8, 2, 1, "future_output", True)
+  #x_1 = pconv3; y_1 = fconv3
+  import IPython; IPython.embed()
   return x_1, y_1, encoder_state, past_state, future_state
 
 # make a template for reuse
@@ -161,8 +161,8 @@ def discriminator(image, df_dim=16, reuse=False, fc_shape=None):
     if reuse:
       scope.reuse_variables()
     image = tf.nn.avg_pool(image, 
-                                    ksize=[1, 1, 4, 1],
-                                    strides=[1, 1, 4, 1],
+                                    ksize=[1, 1, 3, 1],
+                                    strides=[1, 1, 2, 1],
                                     padding='SAME')
     h0 = ld.conv2d(image, (3, 7),(1,4),df_dim, name='d_h0_conv')
     h1 = ld.conv2d(h0, (3, 7),(1,2),df_dim*2, name='d_h1_conv')
@@ -212,6 +212,7 @@ def train(with_gan=True, load_x=True):
     if with_gan:
       img = x[:,FLAGS.seq_start:,:,:]
       img_ = y_1
+      import IPython; IPython.embed()
       D, D_logits, D3 = discriminator(img, reuse=False)
       #import IPython; IPython.embed()
       D_, D_logits_, D3_ = discriminator(img_, reuse=True, fc_shape=D3.get_shape().as_list())
@@ -287,6 +288,24 @@ def train(with_gan=True, load_x=True):
     for step in range(FLAGS.max_step):
       dat = load_batch(FLAGS.batch_size, files, step)
       t = time.time()
+      errG, errD = sess.run([g_loss, d_loss], feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+      i = 0
+      while errG > 0.9:
+                            
+          _ = sess.run(g_optim, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+          i+=1
+          if i > 2: break
+          else:
+              errG = sess.run(g_loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+
+      i = 0
+      while errD > 0.45:
+          # only update discriminator if loss are within given bounds
+          _ = sess.run(d_optim, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+          i+=1
+          if i > 2: break
+          else:
+              errD = sess.run(d_loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       _, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
       
