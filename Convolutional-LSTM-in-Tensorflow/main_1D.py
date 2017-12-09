@@ -62,7 +62,7 @@ def decode_stack(inputs, i):
   conv2 = ld.transpose_conv_layer_1D(conv1, 3, 1, 8, "decode_{}".format(i+2))
   return conv2
 
-def network(inputs, hidden, lstm_depth=4):
+def encoder(inputs, hidden, lstm_depth=4):
   #inputs is 3D tensor (batch, )
   conv1 = ld.conv_layer_1D(inputs, 7, 2, 8, "encode_1")
   # conv2
@@ -88,17 +88,24 @@ def network(inputs, hidden, lstm_depth=4):
     #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
       cell = BasicConvLSTMCell([256,], [5,], 8)
       y_0, _ = cell(y_0, hidden)
+  return y_0, hidden 
 
-  dconv = y_0
-  #import IPython; IPython.embed()
-  #dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
-  #import IPython; IPython.embed()
-  # for i in xrange(1,3,2):
-  #   #print(dconv.get_shape())
-  #   dconv = decode_stack(dconv, i)
-  #import IPython; IPython.embed()
-  # x_1 
-  i = 1
+def decoder(inputs, hidden, lstm_depth=4, name='decoder'):
+
+  with tf.variable_scope('decode_lstm_0', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
+      cell = BasicConvLSTMCell([256,], [5,], 8)
+      if hidden is None:
+        hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
+      y_0, _ = cell(y_0, hidden)
+
+
+  for l in range(1, lstm_depth):
+    # conv lstm cell 
+    with tf.variable_scope('decode_lstm_{}'.format(l), initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
+    #with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
+      cell = BasicConvLSTMCell([256,], [5,], 8)
+      y_0, _ = cell(y_0, hidden)
   x_1 = ld.transpose_conv_layer_1D(dconv, 7, 2, 1, "decode_{}".format(i+3), True) # set activation to linear
 
   return x_1, hidden
