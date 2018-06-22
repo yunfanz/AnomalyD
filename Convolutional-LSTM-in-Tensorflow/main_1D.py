@@ -34,7 +34,7 @@ tf.app.flags.DEFINE_boolean('resume', False,
 
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
   dat = np.zeros((batch_size, seq_length, shape, shape, 3))
-  for i in xrange(batch_size):
+  for i in range(batch_size):
     dat[i, :, :, :, :] = b.bounce_vec(32, num_balls, seq_length)
   return dat 
 
@@ -67,7 +67,7 @@ def network(inputs, hidden, lstm_depth=4):
   conv1 = ld.conv_layer_1D(inputs, 5, 2, 8, "encode_1")
   # conv2
   conv = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_2")
-  for i in xrange(2,10,2):
+  for i in range(2,10,2):
     conv = encode_stack(conv, i)
 
   conv = ld.conv_layer_1D(conv, 1, 1, 4, "encode_{}".format(i+3))
@@ -93,7 +93,7 @@ def network(inputs, hidden, lstm_depth=4):
   #import IPython; IPython.embed()
   dconv = ld.transpose_conv_layer_1D(y_1, 1, 1, 8, "decode_1")
   #import IPython; IPython.embed()
-  for i in xrange(1,9,2):
+  for i in range(1,9,2):
     #print(dconv.get_shape())
     dconv = decode_stack(dconv, i)
   #import IPython; IPython.embed()
@@ -146,7 +146,7 @@ def train(with_gan=True, load_x=True):
 
     # conv network
     hidden = None
-    for i in xrange(FLAGS.seq_length-1):
+    for i in range(FLAGS.seq_length-1):
       if i < FLAGS.seq_start:
         x_1, hidden = network_template(x_dropout[:,i,:,:], hidden)
       else: #conditional generation
@@ -160,7 +160,7 @@ def train(with_gan=True, load_x=True):
     # this part will be used for generating video
     x_unwrap_g = []
     hidden_g = None
-    for i in xrange(30):
+    for i in range(30):
       if i < FLAGS.seq_start:
         x_1_g, hidden_g = network_template(x_dropout[:,i,:,:], hidden_g)
         x_unwrap_g.append(x_dropout[:,i+1,:,:])
@@ -252,7 +252,7 @@ def train(with_gan=True, load_x=True):
     sample_dir = FLAGS.train_dir + '/samples/'
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
-    for step in xrange(FLAGS.max_step):
+    for step in range(FLAGS.max_step):
       #dat = generate_bouncing_ball_sample(FLAGS.batch_size, FLAGS.seq_length, 32, FLAGS.num_balls)
       if load_x:
         dat = load_batch(FLAGS.batch_size, files, step)
