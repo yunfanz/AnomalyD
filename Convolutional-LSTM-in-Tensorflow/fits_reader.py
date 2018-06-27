@@ -29,7 +29,7 @@ def find_pairs(directory, pattern='*OFF.fits', sortby='shuffle'):
         np.random.shuffle(files)
     return files
 
-def load_batch(batch_size, files, index, with_y=False):
+def load_batch(batch_size, files, index, with_y=False, normalize=True):
     batch = []
     if index % 30000 == 0:
         np.random.shuffle(files)
@@ -39,6 +39,10 @@ def load_batch(batch_size, files, index, with_y=False):
             img = fitsio.read(files[i])
         else:
             img = np.vstack([fitsio.read(f) for f in files[i]])
+        if normalize:
+            mask = img < np.percentile(img, q=95)
+            img /= np.mean(img[mask])*5
+        #print(np.mean(img), np.amax(img))
         batch.append(img)
     batch = np.stack(batch, axis=0)
     batch = batch[...,np.newaxis]/np.amax(batch)#*20.

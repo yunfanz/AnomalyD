@@ -5,6 +5,7 @@ import time
 import math
 import numpy as np
 import tensorflow as tf
+from tensorflow.contrib.distributions import percentile
 #import cv2
 from fits_reader import *
 import bouncing_balls as b
@@ -19,6 +20,8 @@ tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
 tf.app.flags.DEFINE_string('data_dir', './Data',
                             """dir to load data""")
 tf.app.flags.DEFINE_string('mode', 'train',
+                            """train or test""")
+tf.app.flags.DEFINE_string('train_mode', 'with_gan',
                             """train or test""")
 tf.app.flags.DEFINE_integer('seq_length', 32,
                             """size of hidden layer""")
@@ -197,27 +200,36 @@ def _plot_samples(samples, fname):
     print('saving', fname)
     plt.savefig(fname)
 
-def train(with_gan=True, load_x=True, with_y=True):
+def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
     x_all = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
-
+    if match_mask: with_gan = False
     # possible dropout inside
     keep_prob = tf.placeholder("float")
     #x_dropout = tf.nn.dropout(x, keep_prob)
 
-    y = x_all[:,FLAGS.seq_start:,:,:]
-    x = x_all[:,:FLAGS.seq_start,:,:]
+    x_in = x_all[:,:FLAGS.seq_start,:,:]
     # conv network
     encoder_state = None
     past_state = None
     future_state = None
-    x_1, y_1, encoder_state, past_state, future_state = network_template(x, encoder_state, past_state, future_state)
-
-    past_loss_l2 = tf.nn.l2_loss(x - x_1)
-    future_loss_l2 = tf.nn.l2_loss(y - y_1)
-
-    
+    x_1, y_1, encoder_state, past_state, future_state = network_template(x_in, encoder_state, past_state, future_state)
+    if not match_mask:
+      y = x_all[:,FLAGS.seq_start:,:,:]
+      x = x_all[:,:FLAGS.seq_start,:,:]
+      past_loss_l2 = tf.nn.l2_loss(x - x_1)
+      future_loss_l2 = tf.nn.l2_loss(y - y_1)
+    else:
+      x_mask = x_all > percentile(x_all, q=95.)
+      x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
+      x_1 = tf.stack([x_1, 1./x_1], axis=-1)
+      y_1 = tf.stack([y_1, 1./y_1], axis=-1)
+      y = x_mask[:,FLAGS.seq_start:,:,:]
+      x = x_mask[:,:FLAGS.seq_start,:,:]
+      past_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=x_1, labels=x))
+      future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_1, labels=y))
+      #import IPython; IPython.embed()
     if with_gan:
 
       #import IPython; IPython.embed()
@@ -300,24 +312,25 @@ def train(with_gan=True, load_x=True, with_y=True):
       dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y)
 
       t = time.time()
-      errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-      i = 0
-      while errG > 0.9:
-                            
-          _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-          i+=1
-          if i > 2: break
-          else:
-              errG = sess.run(g_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+      if with_gan:
+        errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+        i = 0
+        while errG > 0.9:
+                              
+            _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+            i+=1
+            if i > 2: break
+            else:
+                errG = sess.run(g_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
 
-      i = 0
-      while errD > 0.45:
-          # only update discriminator if loss are within given bounds
-          _ = sess.run(d_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-          i+=1
-          if i > 2: break
-          else:
-              errD = sess.run(d_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+        i = 0
+        while errD > 0.45:
+            # only update discriminator if loss are within given bounds
+            _ = sess.run(d_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+            i+=1
+            if i > 2: break
+            else:
+                errD = sess.run(d_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       _, loss_r = sess.run([train_op, loss],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
       
@@ -342,11 +355,13 @@ def train(with_gan=True, load_x=True, with_y=True):
         _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
         _plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
 
-def test(test_mode='anomaly'):
+def test(test_mode='anomaly', with_y=True):
   with tf.Graph().as_default():
-    x = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
+    x_all = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
 
 
+    y = x_all[:,FLAGS.seq_start:,:,:]
+    x = x_all[:,:FLAGS.seq_start,:,:]
     # possible dropout inside
     keep_prob = tf.placeholder("float")
     #x_dropout = tf.nn.dropout(x, keep_prob)
@@ -359,11 +374,11 @@ def test(test_mode='anomaly'):
     x_1, y_1, encoder_state, past_state, future_state = network_template(x_dropout[:,:FLAGS.seq_start,:,:], encoder_state, past_state, future_state)
 
     #past_loss_l2 = tf.nn.l2_loss(x[:,:FLAGS.seq_start,:,:] - x_1)
-    future_loss_l2 = tf.nn.l2_loss(x[:,FLAGS.seq_start:,:,:] - y_1)
-    anomaly_loss_l2 = [tf.nn.l2_loss(x[i,FLAGS.seq_start:,:,:] - y_1[i]) for i in range(FLAGS.batch_size)]
-    fake_loss_l2 = [tf.nn.l2_loss(x[FLAGS.batch_size-1-i,FLAGS.seq_start:,:,:] - y_1[i]) for i in range(FLAGS.batch_size)]
+    future_loss_l2 = tf.nn.l2_loss(y - y_1)
+    anomaly_loss_l2 = [tf.nn.l2_loss(y[i] - y_1[i]) for i in range(FLAGS.batch_size)]
+    fake_loss_l2 = [tf.nn.l2_loss(y[FLAGS.batch_size-1-i] - y_1[i]) for i in range(FLAGS.batch_size)]
 
-    img = x[:,FLAGS.seq_start:,:,:]
+    img = x
     img_ = y_1
     #import IPython; IPython.embed()
     D, D_logits, D3 = discriminator(img, reuse=False)
@@ -394,22 +409,25 @@ def test(test_mode='anomaly'):
         sys.exit(1)
     print("resume", latest)
     saver.restore(sess, latest)
-    files = find_files(FLAGS.data_dir)
+    if not with_y:
+      files = find_files(FLAGS.data_dir)
+    else:
+      files = find_pairs(FLAGS.data_dir)
     sample_dir = FLAGS.train_dir + '/samples/'
     
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step)
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y)
       im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x_1, y_1, d_loss,
                                                             anomaly_loss_l2, fake_loss_l2,
                                                             anomaly_loss_D3, fake_loss_D3,],
-                                                            feed_dict={x:dat, keep_prob:1.})
+                                                            feed_dict={x_all:dat, keep_prob:1.})
       #_plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'test_{}_past_t.png'.format(step))
       #_plot_samples(im_x.squeeze(), sample_dir+'test_{}_past.png'.format(step))
       #_plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'test_{}_future_t.png'.format(step))
       #_plot_samples(im_y.squeeze(), sample_dir+'test_{}_future.png'.format(step))
-      print("loss", d_loss)
+      print("loss", dloss)
       import IPython; IPython.embed()
 
 def main(argv=None):  # pylint: disable=unused-argument
@@ -418,7 +436,12 @@ def main(argv=None):  # pylint: disable=unused-argument
       if tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.DeleteRecursively(FLAGS.train_dir)
       tf.gfile.MakeDirs(FLAGS.train_dir)
-    train(with_y=True)
+    if FLAGS.train_mode == 'with_gan':
+      train(with_gan=True)
+    elif FLAGS.train_mode == 'match_mask':
+      train(match_mask=True)
+    else:
+      train()
   elif FLAGS.mode == "test":
     test()
 
