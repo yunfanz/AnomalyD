@@ -44,7 +44,7 @@ tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
 tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
-tf.app.flags.DEFINE_boolean('resume', False,
+tf.app.flags.DEFINE_boolean('resume', True,
                             """whether to load saved wieghts""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
