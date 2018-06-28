@@ -115,46 +115,46 @@ def network_2d(inputs, encoder_state, past_state, future_state):
   #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell1 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    cell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     if encoder_state is None:
       encoder_state = cell1.zero_state(FLAGS.batch_size, tf.float32) 
     conv1, encoder_state = cell1(conv, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell2 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    cell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     conv2, encoder_state = cell2(conv1, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell3 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    cell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     conv3, encoder_state = cell3(conv2, encoder_state)
   
   # past decoder convlstm 
   with tf.variable_scope('past_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell1 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    pcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     if past_state is None:
       past_state = pcell1.zero_state(FLAGS.batch_size, tf.float32) 
     pconv1, past_state = pcell1(conv1, past_state)
   with tf.variable_scope('past_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell2 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    pcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     pconv2, past_state = pcell2(conv2, past_state)
   with tf.variable_scope('past_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell3 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    pcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     pconv3, past_state = pcell3(conv3, past_state)
 
   # future decoder convlstm 
   with tf.variable_scope('future_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell1 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    fcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     if future_state is None:
       future_state = fcell1.zero_state(FLAGS.batch_size, tf.float32) 
     fconv1, future_state = fcell1(conv1, future_state)
   with tf.variable_scope('future_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell2 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    fcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     fconv2, future_state = fcell2(conv2, future_state)
   with tf.variable_scope('future_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell3 = BasicConvLSTMCell2d([8, 256], [4, 4], 16)
+    fcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
     fconv3, future_state = fcell3(conv3, future_state)
   # present output
-  x_1 = ld.transpose_conv_layer(pconv3, 8, 2, 1, "present_output", True)
+  x_1 = ld.transpose_conv_layer(pconv3, (4,8), (1,2), 1, "present_output", True)
   # # future output
-  y_1 = ld.transpose_conv_layer(fconv3, 8, 2, 1, "future_output", True)
+  y_1 = ld.transpose_conv_layer(fconv3, (4,8), (1,2), 1, "future_output", True)
   #x_1 = pconv3; y_1 = fconv3
   #import IPython; IPython.embed()
   return x_1, y_1, encoder_state, past_state, future_state
@@ -233,9 +233,10 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
       future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_logit, labels=y))
       #import IPython; IPython.embed()
     if with_gan:
-
+      img = x[:,FLAGS.seq_start:,:,:]
+      img_ = y_1
       #import IPython; IPython.embed()
-      D, D_logits, D3 = discriminator(y, reuse=False)
+      D, D_logits, D3 = discriminator(img, reuse=False)
       #import IPython; IPython.embed()
       D_, D_logits_, D3_ = discriminator(y_1, reuse=True, fc_shape=D3.get_shape().as_list())
       d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
@@ -252,7 +253,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
       tf.summary.scalar('loss_g', g_loss)
       tf.summary.scalar('loss_d', d_loss)
       tf.summary.scalar('loss_feature', D3_loss)
-      loss = 0.05*(past_loss_l2 + future_loss_l2) + g_loss + 0.001*D3_loss
+      loss = 0.05*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*1.e-4
       tf.summary.scalar('past_loss_l2', past_loss_l2)
       tf.summary.scalar('future_loss_l2', future_loss_l2)
       d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
@@ -311,29 +312,33 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y)
-
+      dat = load_batch_pair(FLAGS.batch_size, files, step)
       t = time.time()
-      if with_gan:
-        errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+      errG, errD = sess.run([g_loss, d_loss], feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+      if errG > 0.6 and errD>0.6:
+        _, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+      else:
         i = 0
-        while errG > 0.9:
+        while errG > 0.6:
                               
-            _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+            _ = sess.run(g_optim, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
             i+=1
             if i > 2: break
             else:
-                errG = sess.run(g_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+                errG = sess.run(g_loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+        print('G', i, errG)
 
         i = 0
-        while errD > 0.45:
+        while errD > 0.6:
             # only update discriminator if loss are within given bounds
-            _ = sess.run(d_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+            _ = sess.run(d_optim, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
             i+=1
             if i > 2: break
             else:
-                errD = sess.run(d_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-      _, loss_r = sess.run([train_op, loss],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+                errD = sess.run(d_loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+        print('D', i, errD)
+        loss_r = sess.run(loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+      #_, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
       
       if step%100 == 0 and step != 0:
@@ -423,7 +428,7 @@ def test(test_mode='anomaly', with_y=True):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y)
+      dat = load_batch_pair(FLAGS.batch_size, files, step)
       im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x_1, y_1, d_loss,
                                                             anomaly_loss_l2, fake_loss_l2,
                                                             anomaly_loss_D3, fake_loss_D3,],

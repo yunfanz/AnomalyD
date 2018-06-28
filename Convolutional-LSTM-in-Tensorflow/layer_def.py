@@ -82,11 +82,11 @@ def transpose_conv_layer(inputs, kernel_size, stride, num_features, idx, linear 
   with tf.variable_scope('{0}_trans_conv'.format(idx)) as scope:
     input_channels = inputs.get_shape()[3]
     
-    weights = _variable_with_weight_decay('weights', shape=[kernel_size,kernel_size,num_features,input_channels], stddev=0.01, wd=FLAGS.weight_decay)
+    weights = _variable_with_weight_decay('weights', shape=[kernel_size[0],kernel_size[1],num_features,input_channels], stddev=0.01, wd=FLAGS.weight_decay)
     biases = tf.get_variable('biases',[num_features],initializer=tf.constant_initializer(0.01))
     batch_size = tf.shape(inputs)[0]
-    output_shape = tf.stack([tf.shape(inputs)[0], tf.shape(inputs)[1]*stride, tf.shape(inputs)[2]*stride, num_features]) 
-    conv = tf.nn.conv2d_transpose(inputs, weights, output_shape, strides=[1,stride,stride,1], padding='SAME')
+    output_shape = tf.stack([tf.shape(inputs)[0], tf.shape(inputs)[1]*stride[0], tf.shape(inputs)[2]*stride[1], num_features]) 
+    conv = tf.nn.conv2d_transpose(inputs, weights, output_shape, strides=[1,stride[0],stride[1],1], padding='SAME')
     conv_biased = tf.nn.bias_add(conv, biases)
     if linear:
       return conv_biased
