@@ -223,12 +223,14 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     else:
       x_mask = x_all > percentile(x_all, q=95.)
       x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
-      x_1 = tf.stack([x_1, 1./x_1], axis=-1)
-      y_1 = tf.stack([y_1, 1./y_1], axis=-1)
+      x_logit = tf.stack([x_1, 1./x_1], axis=-1)
+      y_logit = tf.stack([y_1, 1./y_1], axis=-1)
+      x_1 = tf.nn.softmax(logits=x_logit)
+      y_1 = tf.nn.softmax(logits=y_logit)
       y = x_mask[:,FLAGS.seq_start:,:,:]
       x = x_mask[:,:FLAGS.seq_start,:,:]
-      past_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=x_1, labels=x))
-      future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_1, labels=y))
+      past_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=x_logit, labels=x))
+      future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_logit, labels=y))
       #import IPython; IPython.embed()
     if with_gan:
 
@@ -343,13 +345,16 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
       
       assert not np.isnan(loss_r), 'Model diverged with loss = NaN'
 
-      if step%4000 == 0 and step>0:
+      if step%4000 == 0:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)  
         print("saved to " + FLAGS.train_dir)
 
         print("now saving sample!")
         im_x, im_y = sess.run([x_1, y_1],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+        if match_mask:
+            im_x = im_x[...,1]
+            im_y = im_y[...,1]
         _plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'step_{}_past_t.png'.format(step))
         _plot_samples(im_x.squeeze(), sample_dir+'step_{}_past.png'.format(step))
         _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
@@ -428,7 +433,7 @@ def test(test_mode='anomaly', with_y=True):
       #_plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'test_{}_future_t.png'.format(step))
       #_plot_samples(im_y.squeeze(), sample_dir+'test_{}_future.png'.format(step))
       print("loss", dloss)
-      import IPython; IPython.embed()
+      #import IPython; IPython.embed()
 
 def main(argv=None):  # pylint: disable=unused-argument
   if FLAGS.mode == "train":
