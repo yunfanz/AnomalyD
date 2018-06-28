@@ -1,18 +1,21 @@
 from __future__ import print_function
-import os.path
+import os, os.path
 import time
 import math
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.distributions import percentile
-#import cv2
 from fits_reader import *
 import bouncing_balls as b
 import layer_def as ld
 from ConvLSTM1D import BasicConvLSTMCell
 from BasicConvLSTMCell2d import BasicConvLSTMCell2d
+from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
+
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
@@ -342,6 +345,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
       dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
+      dat = random_flip(dat)
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       if errG > 0.6 and errD>0.6:
@@ -393,6 +397,20 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
         _plot_samples(im_x.squeeze(), sample_dir+'step_{}_past.png'.format(step))
         _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
         _plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
+
+def _plot_roc(real, pred):
+  fpr, tpr, threshold = roc_curve(real, pred)
+  roc_auc = auc(fpr, tpr)
+  plt.title('ROC (threshold=%0.4f)' % threshold)
+  plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % roc_auc)
+  plt.legend(loc='lower right')
+  plt.plot([0, 1], [0, 1],'r--')
+  plt.xlim([0, 1])
+  plt.ylim([0, 1])
+  plt.ylabel('True Positive Rate')
+  plt.xlabel('False Positive Rate')
+  plt.tight_layout()
+  plt.savefig("roc_%f.png" % threshold)
 
 def test(test_mode='anomaly', with_y=True):
   with tf.Graph().as_default():
@@ -456,6 +474,7 @@ def test(test_mode='anomaly', with_y=True):
     
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
+
     for step in range(FLAGS.max_step):
       dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
       x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
@@ -474,6 +493,7 @@ def test(test_mode='anomaly', with_y=True):
       val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
       print(val_normal)
       print(val_anomaly)
+
       for thresh in np.arange(0.01, 0.8, 0.02):
         n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
         acc = float(n_correct)/FLAGS.batch_size/2
