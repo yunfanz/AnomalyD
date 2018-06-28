@@ -209,16 +209,20 @@ def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
     return tf.nn.sigmoid(h6), h6, h5
 
 
-def _plot_samples(samples, fname):
+def _plot_samples(samples, fname, pad='mid'):
     batch_size = samples.shape[0]
+    if pad == 'mid':
+      print(np.zeros_like(samples[:,0,:])[:,np.newaxis,:].shape, samples.shape)
+      samples = np.concatenate([samples[:,:FLAGS.seq_start,:], np.zeros_like(samples[:,0,:])[:,np.newaxis,:],samples[:,FLAGS.seq_start:,:]], axis=1)
     plt.figure(1, figsize=(16,10))
-    n_columns = 4
-    n_rows = min(math.ceil(batch_size / n_columns) + 1, 4)
+    n_columns = 3
+    n_rows = min(math.ceil(batch_size / n_columns) + 1, 3)
     for i in range(min(batch_size, n_columns*n_rows)):
         plt.subplot(n_rows, n_columns, i+1)
-        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto')
+        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, 0,10,])
     print('saving', fname)
     plt.savefig(fname)
+
 
 def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
   """Train ring_net for a number of steps."""
@@ -454,8 +458,8 @@ def test(test_mode='anomaly', with_y=True):
                                                             anomaly_loss_D3, fake_loss_D3,],
                                                             feed_dict={x_all:dat, keep_prob:1.})
       
-      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=95, keepdims=True) #True for top 5% pixels
-      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=95, keepdims=True) #True for top 5% pixels
+      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
+      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
       #y_t /= np.mean(y_t*m1, axis=(1,2,3), keepdims=True)
       #y_g = im_y / np.mean(im_y/m2, axis=(1,2,3), keepdims=True)
       #y_d1 = y_g*~m2 - y_t*~m1
@@ -465,19 +469,17 @@ def test(test_mode='anomaly', with_y=True):
       val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
       print(val_normal)
       print(val_anomaly)
-      for thresh in np.arange(0.01, 0.2, 0.01):
+      for thresh in np.arange(0.01, 0.8, 0.02):
         n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
         acc = float(n_correct)/FLAGS.batch_size/2
         false_alarm = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
         missed_detection = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
         print(thresh, acc, false_alarm, missed_detection)
 
-      import IPython; IPython.embed()
-      #_plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'test_{}_past_t.png'.format(step))
-      #_plot_samples(im_x.squeeze(), sample_dir+'test_{}_past.png'.format(step))
-      #_plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'test_{}_future_t.png'.format(step))
-      #_plot_samples(im_y.squeeze(), sample_dir+'test_{}_future.png'.format(step))
-      print("loss", dloss)
+      #import IPython; IPython.embed()
+      _plot_samples(np.vstack([x_t.squeeze(), y_t.squeeze()]), sample_dir+'GT_{}.png'.format(step))
+      _plot_samples(np.vstack([im_x.squeeze(), im_y.squeeze()]), sample_dir+'pred_{}.png'.format(step))
+      #print("loss", dloss)
       #import IPython; IPython.embed()
 
 def main(argv=None):  # pylint: disable=unused-argument
