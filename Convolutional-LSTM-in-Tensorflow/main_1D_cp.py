@@ -332,7 +332,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='noise')
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       if errG > 0.6 and errD>0.6:

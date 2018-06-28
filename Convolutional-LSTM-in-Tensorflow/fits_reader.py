@@ -49,7 +49,7 @@ def load_batch(batch_size, files, index, with_y=False, normalize='max'):
         batch = batch/np.amax(batch, axis=(1,2),keepdims=True)#*20.
     elif normalize == 'noise':
         mask = batch < np.percentile(batch, q=95, axis=(1,2), keepdims=True)
-        batch /= np.mean(batch[mask], axis=(1,2))*5
+        batch /= np.mean(batch*mask, axis=(1,2), keepdims=True)*5
     return batch
 
 
