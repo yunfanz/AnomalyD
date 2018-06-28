@@ -99,3 +99,15 @@ def load_batch_pair(batch_size, files, index, normalize='max'):
         mask = batch < np.percentile(batch, q=95, axis=(1,2), keepdims=True)
         batch /= np.mean(batch[mask], axis=(1,2))*5
     return batch
+
+
+def random_flip(batch):
+    n = len(batch)
+    for i in range(n):
+        # flip about 1/3 of time
+        if np.random.random() <= 0.33:
+            if np.random.random() > 0.5:
+                batch[i] = np.fliplr(batch[i])
+            else:
+                batch[i] = np.flipud(batch[i])
+    return batch
