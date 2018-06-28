@@ -111,7 +111,7 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, (4,4), (2,2), 16, "encode")
+  conv = ld.conv2d(inputs, (4,8), (2,2), 4, "encode")
   #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
@@ -161,7 +161,27 @@ def network_2d(inputs, encoder_state, past_state, future_state):
 
 # make a template for reuse
 network_template = tf.make_template('network', network_2d)
-def discriminator(image, df_dim=32, reuse=False, fc_shape=None):
+def discriminator(image, df_dim=16, reuse=False, fc_shape=None):
+  with tf.variable_scope("discriminator") as scope:
+    if reuse:
+      scope.reuse_variables()
+    image = tf.nn.avg_pool(image, 
+                                    ksize=[1, 1, 4, 1],
+                                    strides=[1, 1, 4, 1],
+                                    padding='SAME')
+    h0 = ld.conv2d(image, (3, 7),(1,4),df_dim, name='d_h0_conv')
+    h1 = ld.conv2d(h0, (3, 7),(1,2),df_dim*2, name='d_h1_conv')
+    h2 = ld.conv2d(h1, (3, 5),(1,2),df_dim*4, name='d_h2_conv')
+    h3 = ld.conv2d(h2, (3, 5),(1,2),df_dim*8, name='d_h3_conv')
+    h4 = ld.conv2d(h3, (3, 3),(1,2),df_dim*16, name='d_h4_conv')
+    h5 = ld.conv2d(h4, (3, 3),(1,1),df_dim*16, name='d_h5_conv')
+
+    #import IPython; IPython.embed()
+    h6 = ld.fc_layer(h5, 1, name='d_h6_lin', linear=True, flat=True, input_shape=fc_shape)
+
+    return tf.nn.sigmoid(h6), h6, h5
+
+def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
   with tf.variable_scope("discriminator") as scope:
     if reuse:
       scope.reuse_variables()
@@ -233,7 +253,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
       future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_logit, labels=y))
       #import IPython; IPython.embed()
     if with_gan:
-      img = x[:,FLAGS.seq_start:,:,:]
+      img = x_all[:,FLAGS.seq_start:,:,:]
       img_ = y_1
       #import IPython; IPython.embed()
       D, D_logits, D3 = discriminator(img, reuse=False)
@@ -312,32 +332,32 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch_pair(FLAGS.batch_size, files, step, normalize='max')
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
       t = time.time()
-      errG, errD = sess.run([g_loss, d_loss], feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+      errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       if errG > 0.6 and errD>0.6:
-        _, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+        _, loss_r = sess.run([train_op, loss],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       else:
         i = 0
         while errG > 0.6:
                               
-            _ = sess.run(g_optim, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+            _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
             if i > 2: break
             else:
-                errG = sess.run(g_loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+                errG = sess.run(g_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         print('G', i, errG)
 
         i = 0
         while errD > 0.6:
             # only update discriminator if loss are within given bounds
-            _ = sess.run(d_optim, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+            _ = sess.run(d_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
             if i > 2: break
             else:
-                errD = sess.run(d_loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+                errD = sess.run(d_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         print('D', i, errD)
-        loss_r = sess.run(loss, feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
+        loss_r = sess.run(loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       #_, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
       
@@ -381,7 +401,7 @@ def test(test_mode='anomaly', with_y=True):
     encoder_state = None
     past_state = None
     future_state = None
-    x_1, y_1, encoder_state, past_state, future_state = network_template(x_dropout[:,:FLAGS.seq_start,:,:], encoder_state, past_state, future_state)
+    x_1, y_1, encoder_state, past_state, future_state = network_template(x_all, encoder_state, past_state, future_state)
 
     #past_loss_l2 = tf.nn.l2_loss(x[:,:FLAGS.seq_start,:,:] - x_1)
     future_loss_l2 = tf.nn.l2_loss(y - y_1)
@@ -428,14 +448,14 @@ def test(test_mode='anomaly', with_y=True):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch_pair(FLAGS.batch_size, files, step, normalize='max')
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
       x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
                                                             anomaly_loss_l2, fake_loss_l2,
                                                             anomaly_loss_D3, fake_loss_D3,],
                                                             feed_dict={x_all:dat, keep_prob:1.})
       
-      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
-      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
+      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=95, keepdims=True) #True for top 5% pixels
+      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=95, keepdims=True) #True for top 5% pixels
       #y_t /= np.mean(y_t*m1, axis=(1,2,3), keepdims=True)
       #y_g = im_y / np.mean(im_y/m2, axis=(1,2,3), keepdims=True)
       #y_d1 = y_g*~m2 - y_t*~m1

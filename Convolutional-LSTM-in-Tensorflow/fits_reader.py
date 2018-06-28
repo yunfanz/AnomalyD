@@ -30,9 +30,9 @@ def find_pairs(directory, pattern='*OFF.fits', sortby='shuffle'):
         np.random.shuffle(files)
     return files
 
-def load_batch(batch_size, files, index, with_y=False, normalize=True):
+def load_batch(batch_size, files, index, with_y=False, normalize='max'):
     batch = []
-    if index % 30000 == 0:
+    if index % 20000 == 0:
         np.random.shuffle(files)
     index = index % (len(files)-batch_size)
     for i in range(index, index+batch_size):
@@ -40,13 +40,16 @@ def load_batch(batch_size, files, index, with_y=False, normalize=True):
             img = fitsio.read(files[i])
         else:
             img = np.vstack([fitsio.read(f) for f in files[i]])
-        if normalize:
-            mask = img < np.percentile(img, q=95)
-            img /= np.mean(img[mask])*5
-        #print(np.mean(img), np.amax(img))
         batch.append(img)
     batch = np.stack(batch, axis=0)
-    batch = batch[...,np.newaxis]/np.amax(batch)#*20.
+    batch = batch[...,np.newaxis]#/np.amax(batch)#*20.
+    if normalize == 'batch':
+        batch = batch/np.amax(batch)#*20.
+    elif normalize == 'max':
+        batch = batch/np.amax(batch, axis=(1,2),keepdims=True)#*20.
+    elif normalize == 'noise':
+        mask = batch < np.percentile(batch, q=95, axis=(1,2), keepdims=True)
+        batch /= np.mean(batch[mask], axis=(1,2))*5
     return batch
 
 
