@@ -215,7 +215,7 @@ def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
     return tf.nn.sigmoid(h6), h6, h5
 
 
-def _plot_samples(samples, fname, pad='mid'):
+def _plot_samples(samples, fname, pad='m'):
     batch_size = samples.shape[0]
     if pad == 'mid':
       print(np.zeros_like(samples[:,0,:])[:,np.newaxis,:].shape, samples.shape)
@@ -482,8 +482,9 @@ def test(test_mode='anomaly', with_y=True):
         print(thresh, acc, false_alarm, missed_detection)
 
       #import IPython; IPython.embed()
-      _plot_samples(np.vstack([x_t.squeeze(), y_t.squeeze()]), sample_dir+'GT_{}.png'.format(step))
-      _plot_samples(np.vstack([im_x.squeeze(), im_y.squeeze()]), sample_dir+'pred_{}.png'.format(step))
+      _plot_samples(dat.squeeze(), sample_dir+'G1{}.png'.format(step))
+      _plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
+      _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'G3_{}.png'.format(step))
       #print("loss", dloss)
       #import IPython; IPython.embed()
 
