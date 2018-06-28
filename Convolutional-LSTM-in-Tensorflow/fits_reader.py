@@ -2,25 +2,13 @@ import fnmatch
 import os
 import re
 import threading
-
 import fitsio
 import numpy as np
 import tensorflow as tf
+from itertools import chain
 
 
-def find_files(directory, pattern='*.fits', sortby='shuffle'):
-    '''Recursively finds all files matching the pattern.'''
-    files = []
-    for root, dirnames, filenames in os.walk(directory):
-        for filename in fnmatch.filter(filenames, pattern):
-            if not 'OFF' in filename:
-                files.append(os.path.join(root, filename))
-    if sortby == 'shuffle':
-        np.random.shuffle(files)
-    return files
-
-def find_pairs(directory, pattern='*OFF.fits', sortby='shuffle'):
-    '''Recursively finds all files matching the pattern.'''
+def train_test_split(directory, train, test, split=.8, pattern='*OFF.fits', sortby='shuffle'):
     files = []
     for root, dirnames, filenames in os.walk(directory):
         for filename in fnmatch.filter(filenames, pattern):
@@ -28,7 +16,45 @@ def find_pairs(directory, pattern='*OFF.fits', sortby='shuffle'):
             files.append((os.path.join(root, on_name), os.path.join(root, filename)))
     if sortby == 'shuffle':
         np.random.shuffle(files)
+
+    train_len = int(len(files) * split)
+    with open(train, 'w+') as train_file:
+        mixed = list(chain(*files[:train_len]))
+        for file in mixed:
+            train_file.write(file + '\n')
+
+    with open(test, 'w+') as test_file:
+        mixed = list(chain(*files[train_len:]))
+        for file in mixed:
+            test_file.write(file + '\n')
+
+
+def find_files(directory, sortby='shuffle'):
+    '''Recursively finds all files matching the pattern.'''
+    files = []
+    with open(directory) as f:
+        content = f.readlines()
+        content = [x.strip() for x in content if not 'OFF' in x]
+        for filename in content:
+            files.append(filename)
+    if sortby == 'shuffle':
+        np.random.shuffle(files)
     return files
+
+
+def find_pairs(directory, sortby='shuffle'):
+    '''Recursively finds all files matching the pattern.'''
+    files = []
+    with open(directory) as f:
+        content = f.readlines()
+        content = [x.strip() for x in content if 'OFF' in x]
+        for filename in content:
+            on_name = '_'.join(filename.split('_')[:-1])+'.fits'
+            files.append((on_name, filename))
+    if sortby == 'shuffle':
+        np.random.shuffle(files)
+    return files
+
 
 def load_batch(batch_size, files, index, with_y=False, normalize='max'):
     batch = []

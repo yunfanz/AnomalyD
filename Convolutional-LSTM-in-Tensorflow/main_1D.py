@@ -1,4 +1,3 @@
-
 from __future__ import print_function
 import os.path
 import time
@@ -13,12 +12,19 @@ import layer_def as ld
 from ConvLSTM1D import BasicConvLSTMCell
 from BasicConvLSTMCell2d import BasicConvLSTMCell2d
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
                             """dir to store trained net""")
 tf.app.flags.DEFINE_string('data_dir', './Data',
                             """dir to load data""")
+tf.app.flags.DEFINE_string('train_data_index', './train_data',
+                            """index to load train data""")
+tf.app.flags.DEFINE_string('test_data_index', './test_data',
+                            """index to load test data""")
+tf.app.flags.DEFINE_float('split', .8,
+                            """train data proportion""")
 tf.app.flags.DEFINE_string('mode', 'train',
                             """train or test""")
 tf.app.flags.DEFINE_string('train_mode', 'with_gan',
@@ -328,11 +334,10 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     graph_def = sess.graph.as_graph_def(add_shapes=True)
     summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph_def=graph_def)
     if not with_y:
-      files = find_files(FLAGS.data_dir)
+      files = find_files(FLAGS.train_data_index)
     else:
-      files = find_pairs(FLAGS.data_dir)
+      files = find_pairs(FLAGS.train_data_index)
     sample_dir = FLAGS.train_dir + '/samples/'
-    
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
@@ -444,9 +449,9 @@ def test(test_mode='anomaly', with_y=True):
     print("resume", latest)
     saver.restore(sess, latest)
     if not with_y:
-      files = find_files(FLAGS.data_dir)
+      files = find_files(FLAGS.test_data_index)
     else:
-      files = find_pairs(FLAGS.data_dir)
+      files = find_pairs(FLAGS.test_data_index)
     sample_dir = FLAGS.train_dir + '/samples/'
     
     if not os.path.exists(sample_dir):
@@ -483,6 +488,10 @@ def test(test_mode='anomaly', with_y=True):
       #import IPython; IPython.embed()
 
 def main(argv=None):  # pylint: disable=unused-argument
+  # create train/test split
+  if not os.path.isfile(FLAGS.train_data_index) or \
+      not os.path.isfile(FLAGS.test_data_index):
+    train_test_split(FLAGS.data_dir, FLAGS.train_data_index, FLAGS.test_data_index, FLAGS.split)
   if FLAGS.mode == "train":
     if not FLAGS.resume:
       if tf.gfile.Exists(FLAGS.train_dir):
