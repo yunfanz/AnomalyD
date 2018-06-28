@@ -309,7 +309,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y)
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=True)
 
       t = time.time()
       if with_gan:
@@ -418,17 +418,37 @@ def test(test_mode='anomaly', with_y=True):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y)
-      im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x_1, y_1, d_loss,
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=False)
+      x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
                                                             anomaly_loss_l2, fake_loss_l2,
                                                             anomaly_loss_D3, fake_loss_D3,],
                                                             feed_dict={x_all:dat, keep_prob:1.})
+      
+      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
+      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
+      #y_t /= np.mean(y_t*m1, axis=(1,2,3), keepdims=True)
+      #y_g = im_y / np.mean(im_y/m2, axis=(1,2,3), keepdims=True)
+      #y_d1 = y_g*~m2 - y_t*~m1
+      #y_d2 = y_g*m2 - y_t*m1
+      #anomaly detection with 
+      val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
+      val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
+      print(val_normal)
+      print(val_anomaly)
+      for thresh in np.arange(0.01, 0.2, 0.01):
+        n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
+        acc = float(n_correct)/FLAGS.batch_size/2
+        false_alarm = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
+        missed_detection = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
+        print(thresh, acc, false_alarm, missed_detection)
+
+      import IPython; IPython.embed()
       #_plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'test_{}_past_t.png'.format(step))
       #_plot_samples(im_x.squeeze(), sample_dir+'test_{}_past.png'.format(step))
       #_plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'test_{}_future_t.png'.format(step))
       #_plot_samples(im_y.squeeze(), sample_dir+'test_{}_future.png'.format(step))
       print("loss", dloss)
-      import IPython; IPython.embed()
+      #import IPython; IPython.embed()
 
 def main(argv=None):  # pylint: disable=unused-argument
   if FLAGS.mode == "train":
