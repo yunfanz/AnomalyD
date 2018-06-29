@@ -490,8 +490,8 @@ def test(with_y=True):
                                                               anomaly_loss_D3, fake_loss_D3,],
                                                               feed_dict={x_all:dat, keep_prob:1.})
         for fi, fill_p in enumerate(fill_percent_list):
-          m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
-          m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
+          m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=100-fill_p, keepdims=True) #True for top 5% pixels
+          m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=100-fill_p, keepdims=True) #True for top 5% pixels
 
           val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
           val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
