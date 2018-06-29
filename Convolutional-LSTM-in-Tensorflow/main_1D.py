@@ -120,7 +120,7 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, (4,8), (2,2), 4, "encode")
+  conv = ld.conv2d(inputs, (4,8), (1,2), 4, "encode")
   #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
@@ -247,7 +247,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     encoder_state = None
     past_state = None
     future_state = None
-    x_1, y_1, encoder_state, past_state, future_state = network_template(x_all, encoder_state, past_state, future_state)
+    x_1, y_1, encoder_state, past_state, future_state = network_template(x_in, encoder_state, past_state, future_state)
     if not match_mask:
       y = x_all[:,FLAGS.seq_start:,:,:]
       x = x_all[:,:FLAGS.seq_start,:,:]
@@ -428,7 +428,7 @@ def test(test_mode='anomaly', with_y=True):
     encoder_state = None
     past_state = None
     future_state = None
-    x_1, y_1, encoder_state, past_state, future_state = network_template(x_all, encoder_state, past_state, future_state)
+    x_1, y_1, encoder_state, past_state, future_state = network_template(x, encoder_state, past_state, future_state)
 
     #past_loss_l2 = tf.nn.l2_loss(x[:,:FLAGS.seq_start,:,:] - x_1)
     future_loss_l2 = tf.nn.l2_loss(y - y_1)
