@@ -12,6 +12,7 @@ from ConvLSTM1D import BasicConvLSTMCell
 from BasicConvLSTMCell2d import BasicConvLSTMCell2d
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
+from gen_corpus import get_pulse
 plt.switch_backend('agg')
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = '0'
