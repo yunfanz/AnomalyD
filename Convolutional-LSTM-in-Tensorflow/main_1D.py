@@ -220,17 +220,16 @@ def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
     return tf.nn.sigmoid(h6), h6, h5
 
 
-def _plot_samples(samples, fname, pad='m'):
+def _plot_samples(samples, fname, pad='m', t_range=[0,10], n_columns=3, max_row=3):
     batch_size = samples.shape[0]
     if pad == 'mid':
       print(np.zeros_like(samples[:,0,:])[:,np.newaxis,:].shape, samples.shape)
       samples = np.concatenate([samples[:,:FLAGS.seq_start,:], np.zeros_like(samples[:,0,:])[:,np.newaxis,:],samples[:,FLAGS.seq_start:,:]], axis=1)
     plt.figure(1, figsize=(16,10))
-    n_columns = 3
-    n_rows = min(math.ceil(batch_size / n_columns) + 1, 3)
+    n_rows = min(math.ceil(batch_size / n_columns) + 1, max_row)
     for i in range(min(batch_size, n_columns*n_rows)):
         plt.subplot(n_rows, n_columns, i+1)
-        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, 0,10,])
+        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, t_range[1],t_range[0]])
     print('saving', fname)
     plt.savefig(fname)
 
@@ -414,7 +413,7 @@ def _plot_roc(real, pred):
   plt.tight_layout()
   plt.savefig("roc_%f.png" % threshold)
 
-def test(test_mode='anomaly', with_y=True):
+def test(with_y=True):
   with tf.Graph().as_default():
     x_all = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
 
@@ -476,43 +475,58 @@ def test(test_mode='anomaly', with_y=True):
     
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
-    nsteps = min(100, FLAGS.max_step)
-    thresh_list = np.arange(0., 1., 0.02)
-    fill_percent_list = [1,2,5,10]
-    ROC = np.zeros((nsteps, len(fill_percent_list), thresh_list.size, 2))
-    for step in range(nsteps):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
-      x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
-                                                            anomaly_loss_l2, fake_loss_l2,
-                                                            anomaly_loss_D3, fake_loss_D3,],
-                                                            feed_dict={x_all:dat, keep_prob:1.})
-      for fi, fill_p in enumerate(fill_percent_list):
-        m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
-        m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
 
-        val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
-        val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
-        #print(val_normal)
-        #print(val_anomaly)
-        
-        for ti, thresh in enumerate(thresh_list):
-          n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
-          acc = float(n_correct)/FLAGS.batch_size/2
-          false_alarm_rate = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
-          true_positive_rate = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
-          #print(thresh, acc, false_alarm, missed_detection)
-          ROC[step, fi, ti, 0] = false_alarm_rate
-          ROC[step, fi, ti, 1] = true_positive_rate
-      #import IPython; IPython.embed()
-      if step < 2:
-        _plot_samples(dat.squeeze(), sample_dir+'GT{}.png'.format(step))
-        #_plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
-        _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.png'.format(step))
-        #print("loss", dloss)
+    if FLAGS.test_mode == 'ROC':
+      nsteps = min(100, FLAGS.max_step)
+      thresh_list = np.arange(0., 1., 0.02)
+      fill_percent_list = [1,2,5,10]
+      ROC = np.zeros((nsteps, len(fill_percent_list), thresh_list.size, 2))
+      for step in range(nsteps):
+        dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
+        x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
+                                                              anomaly_loss_l2, fake_loss_l2,
+                                                              anomaly_loss_D3, fake_loss_D3,],
+                                                              feed_dict={x_all:dat, keep_prob:1.})
+        for fi, fill_p in enumerate(fill_percent_list):
+          m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
+          m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
+
+          val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
+          val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
+          #print(val_normal)
+          #print(val_anomaly)
+          
+          for ti, thresh in enumerate(thresh_list):
+            n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
+            acc = float(n_correct)/FLAGS.batch_size/2
+            false_alarm_rate = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
+            true_positive_rate = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
+            #print(thresh, acc, false_alarm, missed_detection)
+            ROC[step, fi, ti, 0] = false_alarm_rate
+            ROC[step, fi, ti, 1] = true_positive_rate
         #import IPython; IPython.embed()
-    ROC = np.mean(ROC, axis=0)
-    print("save roc")
-    np.save(FLAGS.train_dir+"roc.npy", ROC)
+        if step < 2:
+          _plot_samples(dat.squeeze(), sample_dir+'GT{}.pdf'.format(step))
+          #_plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
+          _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.pdf'.format(step))
+          #print("loss", dloss)
+          #import IPython; IPython.embed()
+      ROC = np.mean(ROC, axis=0)
+      print("save roc")
+      np.save(FLAGS.train_dir+"roc.npy", ROC)
+
+    elif FLAGS.test_mode == 'hallucinate':
+      nsteps = 5
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
+      frames = []
+      for step in range(nsteps):
+        im_x, im_y = sess.run([x_1, y_1]feed_dict={x_all:dat, keep_prob:1.})
+        dat = np.concatenate([im_x, im_y], axis=1)
+        frames.append(im_y)
+      frames = np.concatenate(frames, axis=1).squeeze()
+      for i in range(min(10, FLAGS.batch_size//2)):
+        _plot_samples(frames[i:i+2], sample_dir+'hallucinate{}.pdf'.format(i), pad=None, t_range=[0,5*nsteps], n_columns=2, max_row=1)
+
 
 def main(argv=None):  # pylint: disable=unused-argument
   # create train/test split
