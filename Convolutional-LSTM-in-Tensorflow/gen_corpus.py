@@ -1,6 +1,5 @@
 import numpy as np
 import pylab as plt
-from blimpy import Waterfall
 import os, time, fnmatch
 from scipy import ndimage
 import scipy.misc, fitsio
@@ -8,7 +7,7 @@ from skimage import measure
 from joblib import Parallel, delayed
 
 
-def get_pulse_dist(outdir=None, ind, batch_size=None, ret=False, noise=True):
+def get_pulse_dist(outdir, ind, batch_size=None, ret=False, noise=True):
     if ind % 5000 == 0:
         print("{}".format(ind))
     if batch_size is None:

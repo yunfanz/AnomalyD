@@ -13,6 +13,12 @@ from BasicConvLSTMCell2d import BasicConvLSTMCell2d
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from gen_corpus import get_pulse
+import matplotlib
+font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 22}
+
+matplotlib.rc('font', **font)
 plt.switch_backend('agg')
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = '0'
@@ -404,9 +410,9 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
 
 def _plot_roc(data, percent, save):
   plt.clf()
-  plt.figure(1, figsize=(16,10))
+  plt.figure(1, figsize=(8,4))
   for i in range(len(data)):
-    fpr, tpr = data[i][:,0], 1 - data[i][:,1]
+    fpr, tpr = data[i][:,0], data[i][:,1]
     roc_auc = auc(fpr, tpr)
     plt.plot(fpr, tpr, label='AUC = %0.2f, top-%d%%' % (roc_auc, percent[i]))
   plt.title('ROC by pixel coverage')
@@ -417,7 +423,7 @@ def _plot_roc(data, percent, save):
   plt.ylabel('True Positive Rate')
   plt.xlabel('False Positive Rate')
   plt.tight_layout()
-  plt.savefig(save + "_roc.png")
+  plt.savefig(save + "_roc.pdf")
 
 def test(with_y=True):
   with tf.Graph().as_default():
@@ -483,8 +489,8 @@ def test(with_y=True):
       os.makedirs(sample_dir)
 
     if FLAGS.test_mode == 'ROC':
-      nsteps = min(100, FLAGS.max_step)
-      thresh_list = np.arange(0., 1., 0.02)
+      nsteps = min(500, FLAGS.max_step)
+      thresh_list = np.arange(0., 1., 0.02)**4
       fill_percent_list = [1,2,5,10]
       ROC = np.zeros((nsteps, len(fill_percent_list), thresh_list.size, 2))
       for step in range(nsteps):
@@ -506,7 +512,7 @@ def test(with_y=True):
             n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
             acc = float(n_correct)/FLAGS.batch_size/2
             false_alarm_rate = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
-            true_positive_rate = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
+            true_positive_rate = np.sum(val_anomaly<thresh).astype(float)/FLAGS.batch_size
             #print(thresh, acc, false_alarm, missed_detection)
             ROC[step, fi, ti, 0] = false_alarm_rate
             ROC[step, fi, ti, 1] = true_positive_rate
