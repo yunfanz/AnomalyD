@@ -520,9 +520,9 @@ def test(with_y=True):
 
     elif FLAGS.test_mode == 'hallucinate':
       nsteps = 5
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
       frames = []
       for step in range(nsteps):
+        dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
         im_x, im_y = sess.run([x_1, y_1], feed_dict={x_all:dat, keep_prob:1.})
         dat = np.concatenate([im_x, im_y], axis=1)
         frames.append(im_y)
