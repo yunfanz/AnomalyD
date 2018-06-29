@@ -8,7 +8,7 @@ from skimage import measure
 from joblib import Parallel, delayed
 
 
-def get_pulse(outdir, ind, batch_size=None, ret=False, noise=True):
+def get_pulse_dist(outdir=None, ind, batch_size=None, ret=False, noise=True):
     if ind % 5000 == 0:
         print("{}".format(ind))
     if batch_size is None:
@@ -26,12 +26,26 @@ def get_pulse(outdir, ind, batch_size=None, ret=False, noise=True):
     if noise:
         noise_level = 0.2
         pulse += noise_level * np.random.random(pulse.shape)
-    fitsio.write(outdir+"img_"+str(ind)+'.fits', pulse)
-    scipy.misc.imsave(outdir+"pulse_"+str(ind)+'.png', pulse)
+    if outdir is not None:
+        fitsio.write(outdir+"img_"+str(ind)+'.fits', pulse)
+        scipy.misc.imsave(outdir+"pulse_"+str(ind)+'.png', pulse)
     if ret:
         return pulse
     #np.save(outdir+"pulse_"+str(ind), pulse)
     #scipy.misc.imsave(outdir+"pulse_"+str(ind)+'.png', measure.block_reduce(pulse, (32,1), np.mean))
+
+def get_pulse(batch_size=1, amp=None):
+
+    f_0 = np.random.uniform(0., 512., size=batch_size)[...,np.newaxis, np.newaxis] #in ms 
+    if amp is None:
+        amp = np.random.uniform(0.25, 2.5, size=batch_size)[...,np.newaxis, np.newaxis]
+    width = np.random.uniform(1., 20., size=batch_size)[...,np.newaxis, np.newaxis]
+    slope = np.random.uniform(-15, 15, size=batch_size)[...,np.newaxis, np.newaxis]
+    t = np.arange(16)[np.newaxis, ..., np.newaxis]
+    f = np.arange(512)[np.newaxis, np.newaxis, ...]
+    f0_all = f_0 + slope * t
+    pulse = np.sum(amp*np.exp(-0.5 * (f - f0_all) ** 2 / width ** 2.), axis=0)
+    return pulse
 
 def gen_train(N, outdir):
 
