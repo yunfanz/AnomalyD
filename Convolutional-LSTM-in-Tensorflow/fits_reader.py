@@ -105,9 +105,9 @@ def random_flip(batch):
     n = len(batch)
     for i in range(n):
         # flip about 1/3 of time
-        if np.random.random() <= 0.33:
-            if np.random.random() > 0.5:
-                batch[i] = np.fliplr(batch[i])
-            else:
-                batch[i] = np.flipud(batch[i])
+        #if np.random.random() <= 0.33:
+        if np.random.random() > 0.5:
+            batch[i] = np.fliplr(batch[i])
+        if np.random.random() > 0.5:
+            batch[i] = np.flipud(batch[i])
     return batch
