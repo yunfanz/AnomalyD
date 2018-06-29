@@ -401,11 +401,14 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
         _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
         _plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
 
-def _plot_roc(real, pred):
-  fpr, tpr, threshold = roc_curve(real, pred)
-  roc_auc = auc(fpr, tpr)
-  plt.title('ROC (threshold=%0.4f)' % threshold)
-  plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % roc_auc)
+def _plot_roc(data, percent, save):
+  plt.clf()
+  plt.figure(1, figsize=(16,10))
+  for i in range(len(data)):
+    fpr, tpr = data[i][:,0], 1 - data[i][:,1] 
+    roc_auc = auc(fpr, tpr)
+    plt.plot(fpr, tpr, label='AUC = %0.2f, top-%d%%' % (roc_auc, percent[i]))
+  plt.title('ROC by pixel coverage')
   plt.legend(loc='lower right')
   plt.plot([0, 1], [0, 1],'r--')
   plt.xlim([0, 1])
@@ -413,7 +416,7 @@ def _plot_roc(real, pred):
   plt.ylabel('True Positive Rate')
   plt.xlabel('False Positive Rate')
   plt.tight_layout()
-  plt.savefig("roc_%f.png" % threshold)
+  plt.savefig(save + "_roc.png")
 
 def test(with_y=True):
   with tf.Graph().as_default():
@@ -516,6 +519,7 @@ def test(with_y=True):
       ROC = np.mean(ROC, axis=0)
       print("save roc")
       np.save(FLAGS.train_dir+"roc.npy", ROC)
+      _plot_roc(ROC, fill_percent_list, FLAGS.train_dir)
 
     elif FLAGS.test_mode == 'hallucinate':
       nsteps = 5
