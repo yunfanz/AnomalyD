@@ -32,6 +32,8 @@ tf.app.flags.DEFINE_float('split', .9,
                             """train data proportion""")
 tf.app.flags.DEFINE_string('mode', 'train',
                             """train or test""")
+tf.app.flags.DEFINE_string('test_mode', 'ROC',
+                            """ROC or hallucinate""")
 tf.app.flags.DEFINE_string('train_mode', 'with_gan',
                             """train or test""")
 tf.app.flags.DEFINE_integer('seq_length', 32,
