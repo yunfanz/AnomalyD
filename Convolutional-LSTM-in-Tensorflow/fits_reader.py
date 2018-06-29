@@ -79,28 +79,6 @@ def load_batch(batch_size, files, index, with_y=False, normalize='max'):
     return batch
 
 
-def load_batch_pair(batch_size, files, index, normalize='max'):
-    batch = []
-    if index % 15000 == 0:
-        np.random.shuffle(files)
-    index = index % (len(files)-batch_size)
-    for i in range(index, index+batch_size):
-        f_on = files[i]
-        f_off = '.'.join(f_on.split('.')[:-1])+'_OFF.fits'
-        a_on  = fitsio.read(f_on).squeeze()
-        a_off = fitsio.read(f_off).squeeze()
-        batch.append(np.concatenate([a_on, a_off], axis=0))
-    batch = np.stack(batch, axis=0)[...,np.newaxis]
-    if normalize == 'batch':
-        batch = batch/np.amax(batch)#*20.
-    elif normalize == 'max':
-        batch = batch/np.amax(batch, axis=(1,2),keepdims=True)#*20.
-    elif normalize == 'noise':
-        mask = batch < np.percentile(batch, q=95, axis=(1,2), keepdims=True)
-        batch /= np.mean(batch[mask], axis=(1,2))*5
-    return batch
-
-
 def random_flip(batch):
     n = len(batch)
     for i in range(n):

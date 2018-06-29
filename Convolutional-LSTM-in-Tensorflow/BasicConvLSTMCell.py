@@ -1,4 +1,3 @@
-
 import tensorflow as tf
 
 class ConvRNNCell(object):
@@ -97,6 +96,67 @@ class BasicConvLSTMCell(ConvRNNCell):
       else:
         new_state = tf.concat(axis=3, values=[new_c, new_h])
       return new_h, new_state
+      
+class BasicConvLSTMCell2d(ConvRNNCell):
+  """Basic Conv LSTM recurrent network cell. The
+  """
+
+  def __init__(self, shape, filter_size, num_features, forget_bias=1.0, input_size=None,
+               state_is_tuple=False, activation=tf.nn.tanh):
+    """Initialize the basic Conv LSTM cell.
+    Args:
+      shape: int tuple thats the height and width of the cell
+      filter_size: int tuple thats the height and width of the filter
+      num_features: int thats the depth of the cell 
+      forget_bias: float, The bias added to forget gates (see above).
+      input_size: Deprecated and unused.
+      state_is_tuple: If True, accepted and returned states are 2-tuples of
+        the `c_state` and `m_state`.  If False, they are concatenated
+        along the column axis.  The latter behavior will soon be deprecated.
+      activation: Activation function of the inner states.
+    """
+    #if not state_is_tuple:
+      #logging.warn("%s: Using a concatenated state is slower and will soon be "
+      #             "deprecated.  Use state_is_tuple=True.", self)
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated.", self)
+    self.shape = shape 
+    self.filter_size = filter_size
+    self.num_features = num_features 
+    self._forget_bias = forget_bias
+    self._state_is_tuple = state_is_tuple
+    self._activation = activation
+
+  @property
+  def state_size(self):
+    return (LSTMStateTuple(self._num_units, self._num_units)
+            if self._state_is_tuple else 2 * self._num_units)
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def __call__(self, inputs, state, scope=None):
+    """Long short-term memory cell (LSTM)."""
+    with tf.variable_scope(scope or type(self).__name__):  # "BasicLSTMCell"
+      # Parameters of gates are concatenated into one multiply for efficiency.
+      if self._state_is_tuple:
+        c, h = state
+      else:
+        c, h = tf.split(axis=3, num_or_size_splits=2, value=state)
+      concat = _conv_linear([inputs, h], self.filter_size, self.num_features * 4, True)
+      # i = input_gate, j = new_input, f = forget_gate, o = output_gate
+      i, j, f, o = tf.split(axis=3, num_or_size_splits=4, value=concat)
+
+      new_c = (c * tf.nn.sigmoid(f + self._forget_bias) + tf.nn.sigmoid(i) *
+               self._activation(j))
+      new_h = self._activation(new_c) * tf.nn.sigmoid(o)
+
+      if self._state_is_tuple:
+        new_state = LSTMStateTuple(new_c, new_h)
+      else:
+        new_state = tf.concat(axis=3, values=[new_c, new_h])
+      return new_h, new_state
 
 def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
   """convolution:
@@ -141,4 +201,3 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
         initializer=tf.constant_initializer(
             bias_start, dtype=dtype))
   return res + bias_term
-

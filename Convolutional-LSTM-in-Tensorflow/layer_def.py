@@ -1,5 +1,3 @@
-
-
 """functions used to construct different architectures  
 """
 
