@@ -406,7 +406,7 @@ def _plot_roc(data, percent, save):
   plt.clf()
   plt.figure(1, figsize=(16,10))
   for i in range(len(data)):
-    fpr, tpr = data[i][:,0], 1 - data[i][:,1] 
+    fpr, tpr = data[i][:,0], 1 - data[i][:,1]
     roc_auc = auc(fpr, tpr)
     plt.plot(fpr, tpr, label='AUC = %0.2f, top-%d%%' % (roc_auc, percent[i]))
   plt.title('ROC by pixel coverage')
