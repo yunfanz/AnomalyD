@@ -476,39 +476,43 @@ def test(test_mode='anomaly', with_y=True):
     
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
-
-    for step in range(FLAGS.max_step):
+    nsteps = min(100, FLAGS.max_step)
+    thresh_list = np.arange(0., 1., 0.02)
+    fill_percent_list = [1,2,5,10]
+    ROC = np.zeros((nsteps, len(fill_percent_list), thresh_list.size, 2))
+    for step in range(nsteps):
       dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
       x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
                                                             anomaly_loss_l2, fake_loss_l2,
                                                             anomaly_loss_D3, fake_loss_D3,],
                                                             feed_dict={x_all:dat, keep_prob:1.})
-      
-      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
-      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
-      #y_t /= np.mean(y_t*m1, axis=(1,2,3), keepdims=True)
-      #y_g = im_y / np.mean(im_y/m2, axis=(1,2,3), keepdims=True)
-      #y_d1 = y_g*~m2 - y_t*~m1
-      #y_d2 = y_g*m2 - y_t*m1
-      #anomaly detection with 
-      val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
-      val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
-      print(val_normal)
-      print(val_anomaly)
+      for fi, fill_p in enumerate(fill_percent_list):
+        m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
+        m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=1-fill_p, keepdims=True) #True for top 5% pixels
 
-      for thresh in np.arange(0.01, 0.8, 0.02):
-        n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
-        acc = float(n_correct)/FLAGS.batch_size/2
-        false_alarm = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
-        missed_detection = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
-        print(thresh, acc, false_alarm, missed_detection)
-
+        val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
+        val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
+        #print(val_normal)
+        #print(val_anomaly)
+        
+        for ti, thresh in enumerate(thresh_list):
+          n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
+          acc = float(n_correct)/FLAGS.batch_size/2
+          false_alarm_rate = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
+          true_positive_rate = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
+          #print(thresh, acc, false_alarm, missed_detection)
+          ROC[step, fi, ti, 0] = false_alarm_rate
+          ROC[step, fi, ti, 1] = true_positive_rate
       #import IPython; IPython.embed()
-      _plot_samples(dat.squeeze(), sample_dir+'G1{}.png'.format(step))
-      _plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
-      _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'G3_{}.png'.format(step))
-      #print("loss", dloss)
-      #import IPython; IPython.embed()
+      if step < 2:
+        _plot_samples(dat.squeeze(), sample_dir+'GT{}.png'.format(step))
+        #_plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
+        _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.png'.format(step))
+        #print("loss", dloss)
+        #import IPython; IPython.embed()
+    ROC = np.mean(ROC, axis=0)
+    print("save roc")
+    np.save(FLAGS.train_dir+"roc.npy", ROC)
 
 def main(argv=None):  # pylint: disable=unused-argument
   # create train/test split
