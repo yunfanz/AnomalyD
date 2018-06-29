@@ -112,5 +112,5 @@ def random_flip(batch):
                 batch[i] = np.flipud(batch[i])
         else:
             if np.random.random() > 0.5:
-                batch[i] = np.flipup(np.fliplr(batch[i]))
+                batch[i] = np.flipud(np.fliplr(batch[i]))
     return batch
