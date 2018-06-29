@@ -1,4 +1,3 @@
-
 import tensorflow as tf
 
 class ConvRNNCell(object):
@@ -33,14 +32,14 @@ class ConvRNNCell(object):
     
     shape = self.shape 
     num_features = self.num_features
-    zeros = tf.zeros([batch_size, shape[0], num_features * 2]) 
+    zeros = tf.zeros([batch_size, shape[0], shape[1], num_features * 2]) 
     return zeros
 
-class BasicConvLSTMCell(ConvRNNCell):
+class BasicConvLSTMCell2d(ConvRNNCell):
   """Basic Conv LSTM recurrent network cell. The
   """
 
-  def __init__(self, shape, filter_size, num_features, forget_bias=1.0, input_size=None,
+  def __init__(self, shape, filter_size, num_features, forget_bias=1.0, input_size=None,strides=(1,1),
                state_is_tuple=False, activation=tf.nn.tanh):
     """Initialize the basic Conv LSTM cell.
     Args:
@@ -82,11 +81,10 @@ class BasicConvLSTMCell(ConvRNNCell):
       if self._state_is_tuple:
         c, h = state
       else:
-        c, h = tf.split(axis=2, num_or_size_splits=2, value=state)
+        c, h = tf.split(axis=3, num_or_size_splits=2, value=state)
       concat = _conv_linear([inputs, h], self.filter_size, self.num_features * 4, True)
-
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      i, j, f, o = tf.split(axis=2, num_or_size_splits=4, value=concat)
+      i, j, f, o = tf.split(axis=3, num_or_size_splits=4, value=concat)
 
       new_c = (c * tf.nn.sigmoid(f + self._forget_bias) + tf.nn.sigmoid(i) *
                self._activation(j))
@@ -95,7 +93,7 @@ class BasicConvLSTMCell(ConvRNNCell):
       if self._state_is_tuple:
         new_state = LSTMStateTuple(new_c, new_h)
       else:
-        new_state = tf.concat(axis=2, values=[new_c, new_h])
+        new_state = tf.concat(axis=3, values=[new_c, new_h])
       return new_h, new_state
 
 def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
@@ -116,23 +114,23 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
   total_arg_size_depth = 0
   shapes = [a.get_shape().as_list() for a in args]
   for shape in shapes:
-    if len(shape) != 3:
-      raise ValueError("Linear is expecting 3D arguments: %s" % str(shapes))
-    if not shape[2]:
+    if len(shape) != 4:
+      raise ValueError("Linear is expecting 4D arguments: %s" % str(shapes))
+    if not shape[3]:
       raise ValueError("Linear expects shape[4] of arguments: %s" % str(shapes))
     else:
-      total_arg_size_depth += shape[2]
+      total_arg_size_depth += shape[3]
 
   dtype = [a.dtype for a in args][0]
 
   # Now the computation.
   with tf.variable_scope(scope or "Conv"):
     matrix = tf.get_variable(
-        "Matrix", [filter_size[0], total_arg_size_depth, num_features], dtype=dtype)
+        "Matrix", [filter_size[0], filter_size[1], total_arg_size_depth, num_features], dtype=dtype)
     if len(args) == 1:
-      res = tf.nn.conv1d(args[0], matrix, stride=1, padding='SAME')
+      res = tf.nn.conv2d(args[0], matrix, strides=[1, strides[0], strides[1], 1], padding='SAME')
     else:
-      res = tf.nn.conv1d(tf.concat(axis=2, values=args), matrix, stride=1, padding='SAME')
+      res = tf.nn.conv2d(tf.concat(axis=3, values=args), matrix, strides=[1, strides[0], strides[1], 1], padding='SAME')
     if not bias:
       return res
     bias_term = tf.get_variable(
@@ -141,4 +139,3 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
         initializer=tf.constant_initializer(
             bias_start, dtype=dtype))
   return res + bias_term
-

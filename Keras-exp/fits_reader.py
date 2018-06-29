@@ -29,14 +29,16 @@ def train_test_split(directory, train, test, split=.8, pattern='*OFF.fits', sort
             test_file.write(file + '\n')
 
 
-def find_files(directory, sortby='shuffle'):
+def find_files(directory, pattern='*.fits', sortby='shuffle', pair=True):
     '''Recursively finds all files matching the pattern.'''
     files = []
-    with open(directory) as f:
-        content = f.readlines()
-        content = [x.strip() for x in content if not 'OFF' in x]
-        for filename in content:
-            files.append(filename)
+    for root, dirnames, filenames in os.walk(directory):
+        for filename in fnmatch.filter(filenames, pattern):
+            if pair:
+                on_name = '_'.join(filename.split('_')[:-1])+'.fits'
+                files.append((os.path.join(root, on_name), os.path.join(root, filename)))
+            else:
+                files.append(os.path.join(root, filename))
     if sortby == 'shuffle':
         np.random.shuffle(files)
     return files

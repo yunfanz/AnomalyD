@@ -12,13 +12,6 @@ from ConvLSTM1D import BasicConvLSTMCell
 from BasicConvLSTMCell2d import BasicConvLSTMCell2d
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
-from gen_corpus import get_pulse
-import matplotlib
-font = {'family' : 'normal',
-        'weight' : 'bold',
-        'size'   : 22}
-
-matplotlib.rc('font', **font)
 plt.switch_backend('agg')
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = '0'
@@ -39,8 +32,6 @@ tf.app.flags.DEFINE_float('split', .9,
                             """train data proportion""")
 tf.app.flags.DEFINE_string('mode', 'train',
                             """train or test""")
-tf.app.flags.DEFINE_string('test_mode', 'ROC',
-                            """ROC or hallucinate""")
 tf.app.flags.DEFINE_string('train_mode', 'with_gan',
                             """train or test""")
 tf.app.flags.DEFINE_integer('seq_length', 32,
@@ -131,50 +122,50 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, (4,4), (1,2), 4, "encode")
+  conv = ld.conv2d(inputs, (4,8), (1,2), 16, "encode")
   #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell1 = BasicConvLSTMCell2d([4, 256], [3, 8], 4, strides=(2,1))
+    cell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     if encoder_state is None:
       encoder_state = cell1.zero_state(FLAGS.batch_size, tf.float32) 
     conv1, encoder_state = cell1(conv, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell2 = BasicConvLSTMCell2d([2, 256], [2, 8], 4, strides=(2,1))
+    cell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     conv2, encoder_state = cell2(conv1, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell3 = BasicConvLSTMCell2d([1, 256], [1, 8], 4)
+    cell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     conv3, encoder_state = cell3(conv2, encoder_state)
   
   # past decoder convlstm 
   with tf.variable_scope('past_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell1 = BasicConvLSTMCell2d([1, 256], [1, 8], 4)
+    pcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     if past_state is None:
       past_state = pcell1.zero_state(FLAGS.batch_size, tf.float32) 
     pconv1, past_state = pcell1(conv1, past_state)
   with tf.variable_scope('past_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell2 = BasicConvLSTMCell2d([1, 256], [1, 8], 4)
+    pcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     pconv2, past_state = pcell2(conv2, past_state)
   with tf.variable_scope('past_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell3 = BasicConvLSTMCell2d([1, 256], [1, 8], 4)
+    pcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     pconv3, past_state = pcell3(conv3, past_state)
 
   # future decoder convlstm 
   with tf.variable_scope('future_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell1 = BasicConvLSTMCell2d([1, 256], [1, 8], 4)
+    fcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     if future_state is None:
       future_state = fcell1.zero_state(FLAGS.batch_size, tf.float32) 
     fconv1, future_state = fcell1(conv1, future_state)
   with tf.variable_scope('future_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell2 = BasicConvLSTMCell2d([1, 256], [1, 8], 4)
+    fcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     fconv2, future_state = fcell2(conv2, future_state)
   with tf.variable_scope('future_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell3 = BasicConvLSTMCell2d([1, 256], [1, 8], 4)
+    fcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     fconv3, future_state = fcell3(conv3, future_state)
   # present output
-  x_1 = ld.transpose_conv_layer(pconv3, (1,4), (1,2), 1, "present_output", True)
+  x_1 = ld.transpose_conv_layer(pconv3, (4,8), (1,2), 1, "present_output", True)
   # # future output
-  y_1 = ld.transpose_conv_layer(fconv3, (1,4), (1,2), 1, "future_output", True)
+  y_1 = ld.transpose_conv_layer(fconv3, (4,8), (1,2), 1, "future_output", True)
   #x_1 = pconv3; y_1 = fconv3
   #import IPython; IPython.embed()
   return x_1, y_1, encoder_state, past_state, future_state
@@ -229,21 +220,22 @@ def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
     return tf.nn.sigmoid(h6), h6, h5
 
 
-def _plot_samples(samples, fname, pad=None, t_range=[0,10], n_columns=3, max_row=3):
+def _plot_samples(samples, fname, pad='m'):
     batch_size = samples.shape[0]
     if pad == 'mid':
       print(np.zeros_like(samples[:,0,:])[:,np.newaxis,:].shape, samples.shape)
       samples = np.concatenate([samples[:,:FLAGS.seq_start,:], np.zeros_like(samples[:,0,:])[:,np.newaxis,:],samples[:,FLAGS.seq_start:,:]], axis=1)
     plt.figure(1, figsize=(16,10))
-    n_rows = min(math.ceil(batch_size / n_columns) + 1, max_row)
+    n_columns = 3
+    n_rows = min(math.ceil(batch_size / n_columns) + 1, 3)
     for i in range(min(batch_size, n_columns*n_rows)):
         plt.subplot(n_rows, n_columns, i+1)
-        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, t_range[1],t_range[0]])
+        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, 0,10,])
     print('saving', fname)
     plt.savefig(fname)
 
 
-def train(with_gan=False, load_x=True, with_y=True, match_mask=False, in_frames=4):
+def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
   """Train ring_net for a number of steps."""
   with tf.Graph().as_default():
     x_all = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
@@ -252,46 +244,29 @@ def train(with_gan=False, load_x=True, with_y=True, match_mask=False, in_frames=
     keep_prob = tf.placeholder("float")
     #x_dropout = tf.nn.dropout(x, keep_prob)
 
-    x_in = x_all[:,:in_frames,:,:]
+    x_in = x_all[:,:FLAGS.seq_start,:,:]
     # conv network
-
-    hidden = None
-    x_unwrap = []
-    for i in range(FLAGS.seq_length-1):
-      if i < FLAGS.seq_start:
-        x_1, hidden = network_template(x_all[:,i:i+in_frames,:,:], hidden)
-        x_unwrap.append(x_all[:,i+1,:,:])
-      else: #conditional generation
-        x_1, hidden = network_template(tf.concatenate(x_unwrap[-in_frames:],append(x_1), axis=1), hidden)
-      x_unwrap.append(x_1)
-
-    # pack them all together 
-    x_unwrap = tf.stack(x_unwrap)
-    x_unwrap = tf.transpose(x_unwrap, [1,0,2,3])
-
-    # this part will be used for generating video
-    x_unwrap_g = []
-    hidden_g = None
-    for i in range(30):
-      if i < FLAGS.seq_start:
-        x_1_g, hidden_g = network_template(x_all[:,i:i+in_frames,:,:], hidden_g)
-        x_unwrap_g.append(x_dropout[:,i+1,:,:])
-      else:  #conditional generation
-        x_1_g, hidden_g = network_template(tf.concatenate(x_unwrap_g[-in_frames:],append(x_1_g), axis=1), hidden_g)
-        x_unwrap_g.append(x_1_g)
-
-    # pack them generated ones
-    x_unwrap_g = tf.stack(x_unwrap_g)
-    x_unwrap_g = tf.transpose(x_unwrap_g, [1,0,2,3])
-
-
-    img = x[:,FLAGS.seq_start+1:,:,:]
-    img_ = x_unwrap[:,FLAGS.seq_start:,:,:]
-    # calc total loss (compare x_t to x_t+1)
-    loss_l2 = tf.nn.l2_loss(img - img_)
-    #loss_l2 = rms_loss(img - img_) * 50
-    tf.summary.scalar('loss_l2', loss_l2)
-    
+    encoder_state = None
+    past_state = None
+    future_state = None
+    x_1, y_1, encoder_state, past_state, future_state = network_template(x_in, encoder_state, past_state, future_state)
+    if not match_mask:
+      y = x_all[:,FLAGS.seq_start:,:,:]
+      x = x_all[:,:FLAGS.seq_start,:,:]
+      past_loss_l2 = tf.nn.l2_loss(x - x_1)
+      future_loss_l2 = tf.nn.l2_loss(y - y_1)
+    else:
+      x_mask = x_all > percentile(x_all, q=95.)
+      x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
+      x_logit = tf.stack([x_1, 1./x_1], axis=-1)
+      y_logit = tf.stack([y_1, 1./y_1], axis=-1)
+      x_1 = tf.nn.softmax(logits=x_logit)
+      y_1 = tf.nn.softmax(logits=y_logit)
+      y = x_mask[:,FLAGS.seq_start:,:,:]
+      x = x_mask[:,:FLAGS.seq_start,:,:]
+      past_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=x_logit, labels=x))
+      future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_logit, labels=y))
+      #import IPython; IPython.embed()
     if with_gan:
       img = x_all[:,FLAGS.seq_start:,:,:]
       img_ = y_1
@@ -371,20 +346,8 @@ def train(with_gan=False, load_x=True, with_y=True, match_mask=False, in_frames=
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-#<<<<<<< HEAD
-      #dat = generate_bouncing_ball_sample(FLAGS.batch_size, FLAGS.seq_length, 32, FLAGS.num_balls)
-      if load_x:
-        dat = load_batch(FLAGS.batch_size, files, step)
-      else:
-        tgen = tf.range(start=0., limit=FLAGS.seq_length,dtype=tf.float32)[tf.newaxis,tf.newaxis, ..., tf.newaxis]
-        fgen = tf.range(start=0., limit=512.,dtype=tf.float32)[tf.newaxis,tf.newaxis, tf.newaxis, ...]
-        dat = sess.run(generate_x_batch(FLAGS.batch_size, tgen, fgen))
-      fdict = {x:dat, keep_prob:FLAGS.keep_prob}
-      #import IPython; IPython.embed()
-#=======
       dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
       dat = random_flip(dat)
-#>>>>>>> gan-l
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       if errG > 0.6 and errD>0.6:
@@ -437,14 +400,11 @@ def train(with_gan=False, load_x=True, with_y=True, match_mask=False, in_frames=
         _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
         _plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
 
-def _plot_roc(data, percent, save):
-  plt.clf()
-  plt.figure(1, figsize=(8,4))
-  for i in range(len(data)):
-    fpr, tpr = data[i][:,0], data[i][:,1]
-    roc_auc = auc(fpr, tpr)
-    plt.plot(fpr, tpr, label='AUC = %0.2f, top-%d%%' % (roc_auc, percent[i]))
-  plt.title('ROC by pixel coverage')
+def _plot_roc(real, pred):
+  fpr, tpr, threshold = roc_curve(real, pred)
+  roc_auc = auc(fpr, tpr)
+  plt.title('ROC (threshold=%0.4f)' % threshold)
+  plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % roc_auc)
   plt.legend(loc='lower right')
   plt.plot([0, 1], [0, 1],'r--')
   plt.xlim([0, 1])
@@ -452,9 +412,9 @@ def _plot_roc(data, percent, save):
   plt.ylabel('True Positive Rate')
   plt.xlabel('False Positive Rate')
   plt.tight_layout()
-  plt.savefig(save + "_roc.pdf")
+  plt.savefig("roc_%f.png" % threshold)
 
-def test(with_y=True):
+def test(test_mode='anomaly', with_y=True):
   with tf.Graph().as_default():
     x_all = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
 
@@ -517,58 +477,38 @@ def test(with_y=True):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
 
-    if FLAGS.test_mode == 'ROC':
-      nsteps = min(500, FLAGS.max_step)
-      thresh_list = np.arange(0., 1., 0.02)**4
-      fill_percent_list = [1,2,5,10]
-      ROC = np.zeros((nsteps, len(fill_percent_list), thresh_list.size, 2))
-      for step in range(nsteps):
-        dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
-        x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
-                                                              anomaly_loss_l2, fake_loss_l2,
-                                                              anomaly_loss_D3, fake_loss_D3,],
-                                                              feed_dict={x_all:dat, keep_prob:1.})
-        for fi, fill_p in enumerate(fill_percent_list):
-          m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=100-fill_p, keepdims=True) #True for top 5% pixels
-          m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=100-fill_p, keepdims=True) #True for top 5% pixels
+    for step in range(FLAGS.max_step):
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
+      x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
+                                                            anomaly_loss_l2, fake_loss_l2,
+                                                            anomaly_loss_D3, fake_loss_D3,],
+                                                            feed_dict={x_all:dat, keep_prob:1.})
+      
+      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
+      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
+      #y_t /= np.mean(y_t*m1, axis=(1,2,3), keepdims=True)
+      #y_g = im_y / np.mean(im_y/m2, axis=(1,2,3), keepdims=True)
+      #y_d1 = y_g*~m2 - y_t*~m1
+      #y_d2 = y_g*m2 - y_t*m1
+      #anomaly detection with 
+      val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
+      val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
+      print(val_normal)
+      print(val_anomaly)
 
-          val_normal = np.sum(m1&m2, axis=(1,2,3))/np.sum(m1|m2, axis=(1,2,3))
-          val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
-          #print(val_normal)
-          #print(val_anomaly)
-          
-          for ti, thresh in enumerate(thresh_list):
-            n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
-            acc = float(n_correct)/FLAGS.batch_size/2
-            false_alarm_rate = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
-            true_positive_rate = np.sum(val_anomaly<thresh).astype(float)/FLAGS.batch_size
-            #print(thresh, acc, false_alarm, missed_detection)
-            ROC[step, fi, ti, 0] = false_alarm_rate
-            ROC[step, fi, ti, 1] = true_positive_rate
-        #import IPython; IPython.embed()
-        if step < 2:
-          _plot_samples(dat.squeeze(), sample_dir+'GT{}.pdf'.format(step))
-          #_plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
-          _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.pdf'.format(step))
-          #print("loss", dloss)
-          #import IPython; IPython.embed()
-      ROC = np.mean(ROC, axis=0)
-      print("save roc")
-      np.save(FLAGS.train_dir+"roc.npy", ROC)
-      _plot_roc(ROC, fill_percent_list, FLAGS.train_dir)
+      for thresh in np.arange(0.01, 0.8, 0.02):
+        n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
+        acc = float(n_correct)/FLAGS.batch_size/2
+        false_alarm = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
+        missed_detection = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
+        print(thresh, acc, false_alarm, missed_detection)
 
-    elif FLAGS.test_mode == 'hallucinate':
-      nsteps = 5
-      frames = []
-      for step in range(nsteps):
-        dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
-        im_x, im_y = sess.run([x_1, y_1], feed_dict={x_all:dat, keep_prob:1.})
-        dat = np.concatenate([im_x, im_y], axis=1)
-        frames.append(im_y)
-      frames = np.concatenate(frames, axis=1).squeeze()
-      for i in range(min(10, FLAGS.batch_size//2)):
-        _plot_samples(frames[i:i+2], sample_dir+'hallucinate{}.pdf'.format(i), pad=None, t_range=[0,5*nsteps], n_columns=2, max_row=1)
-
+      #import IPython; IPython.embed()
+      _plot_samples(dat.squeeze(), sample_dir+'G1{}.png'.format(step))
+      _plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
+      _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'G3_{}.png'.format(step))
+      #print("loss", dloss)
+      #import IPython; IPython.embed()
 
 def main(argv=None):  # pylint: disable=unused-argument
   # create train/test split
