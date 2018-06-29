@@ -14,7 +14,7 @@ from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+#os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -22,11 +22,13 @@ tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
                             """dir to store trained net""")
 tf.app.flags.DEFINE_string('data_dir', './Data',
                             """dir to load data""")
+tf.app.flags.DEFINE_string('norm_input', 'max',
+                            """dir to load data""")
 tf.app.flags.DEFINE_string('train_data_index', './train_data',
                             """index to load train data""")
 tf.app.flags.DEFINE_string('test_data_index', './test_data',
                             """index to load test data""")
-tf.app.flags.DEFINE_float('split', .8,
+tf.app.flags.DEFINE_float('split', .9,
                             """train data proportion""")
 tf.app.flags.DEFINE_string('mode', 'train',
                             """train or test""")
@@ -344,7 +346,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
       dat = random_flip(dat)
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
@@ -476,7 +478,7 @@ def test(test_mode='anomaly', with_y=True):
       os.makedirs(sample_dir)
 
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
       x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
                                                             anomaly_loss_l2, fake_loss_l2,
                                                             anomaly_loss_D3, fake_loss_D3,],

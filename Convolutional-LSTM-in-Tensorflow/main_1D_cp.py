@@ -1,24 +1,35 @@
-
 from __future__ import print_function
-import os.path
+import os, os.path
 import time
 import math
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.distributions import percentile
-#import cv2
 from fits_reader import *
 import bouncing_balls as b
 import layer_def as ld
 from ConvLSTM1D import BasicConvLSTMCell
 from BasicConvLSTMCell2d import BasicConvLSTMCell2d
+from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
+
+#os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
                             """dir to store trained net""")
 tf.app.flags.DEFINE_string('data_dir', './Data',
                             """dir to load data""")
+tf.app.flags.DEFINE_string('norm_input', 'max',
+                            """dir to load data""")
+tf.app.flags.DEFINE_string('train_data_index', './train_data',
+                            """index to load train data""")
+tf.app.flags.DEFINE_string('test_data_index', './test_data',
+                            """index to load test data""")
+tf.app.flags.DEFINE_float('split', .9,
+                            """train data proportion""")
 tf.app.flags.DEFINE_string('mode', 'train',
                             """train or test""")
 tf.app.flags.DEFINE_string('train_mode', 'with_gan',
@@ -111,45 +122,45 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, (4,8), (2,2), 4, "encode")
+  conv = ld.conv2d(inputs, (4,8), (1,2), 16, "encode")
   #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    cell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     if encoder_state is None:
       encoder_state = cell1.zero_state(FLAGS.batch_size, tf.float32) 
     conv1, encoder_state = cell1(conv, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    cell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     conv2, encoder_state = cell2(conv1, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    cell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     conv3, encoder_state = cell3(conv2, encoder_state)
   
   # past decoder convlstm 
   with tf.variable_scope('past_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    pcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     if past_state is None:
       past_state = pcell1.zero_state(FLAGS.batch_size, tf.float32) 
     pconv1, past_state = pcell1(conv1, past_state)
   with tf.variable_scope('past_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    pcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     pconv2, past_state = pcell2(conv2, past_state)
   with tf.variable_scope('past_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    pcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     pconv3, past_state = pcell3(conv3, past_state)
 
   # future decoder convlstm 
   with tf.variable_scope('future_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    fcell1 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     if future_state is None:
       future_state = fcell1.zero_state(FLAGS.batch_size, tf.float32) 
     fconv1, future_state = fcell1(conv1, future_state)
   with tf.variable_scope('future_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    fcell2 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     fconv2, future_state = fcell2(conv2, future_state)
   with tf.variable_scope('future_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 4)
+    fcell3 = BasicConvLSTMCell2d([16, 256], [8, 8], 16)
     fconv3, future_state = fcell3(conv3, future_state)
   # present output
   x_1 = ld.transpose_conv_layer(pconv3, (4,8), (1,2), 1, "present_output", True)
@@ -209,16 +220,20 @@ def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
     return tf.nn.sigmoid(h6), h6, h5
 
 
-def _plot_samples(samples, fname):
+def _plot_samples(samples, fname, pad='m'):
     batch_size = samples.shape[0]
+    if pad == 'mid':
+      print(np.zeros_like(samples[:,0,:])[:,np.newaxis,:].shape, samples.shape)
+      samples = np.concatenate([samples[:,:FLAGS.seq_start,:], np.zeros_like(samples[:,0,:])[:,np.newaxis,:],samples[:,FLAGS.seq_start:,:]], axis=1)
     plt.figure(1, figsize=(16,10))
-    n_columns = 4
-    n_rows = min(math.ceil(batch_size / n_columns) + 1, 4)
+    n_columns = 3
+    n_rows = min(math.ceil(batch_size / n_columns) + 1, 3)
     for i in range(min(batch_size, n_columns*n_rows)):
         plt.subplot(n_rows, n_columns, i+1)
-        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto')
+        plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, 0,10,])
     print('saving', fname)
     plt.savefig(fname)
+
 
 def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
   """Train ring_net for a number of steps."""
@@ -234,7 +249,7 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     encoder_state = None
     past_state = None
     future_state = None
-    x_1, y_1, encoder_state, past_state, future_state = network_template(x_all, encoder_state, past_state, future_state)
+    x_1, y_1, encoder_state, past_state, future_state = network_template(x_in, encoder_state, past_state, future_state)
     if not match_mask:
       y = x_all[:,FLAGS.seq_start:,:,:]
       x = x_all[:,:FLAGS.seq_start,:,:]
@@ -324,15 +339,15 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
     graph_def = sess.graph.as_graph_def(add_shapes=True)
     summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph_def=graph_def)
     if not with_y:
-      files = find_files(FLAGS.data_dir)
+      files = find_files(FLAGS.train_data_index)
     else:
-      files = find_pairs(FLAGS.data_dir)
+      files = find_pairs(FLAGS.train_data_index)
     sample_dir = FLAGS.train_dir + '/samples/'
-    
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='noise')
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
+      dat = random_flip(dat)
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       if errG > 0.6 and errD>0.6:
@@ -385,6 +400,20 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
         _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
         _plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
 
+def _plot_roc(real, pred):
+  fpr, tpr, threshold = roc_curve(real, pred)
+  roc_auc = auc(fpr, tpr)
+  plt.title('ROC (threshold=%0.4f)' % threshold)
+  plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % roc_auc)
+  plt.legend(loc='lower right')
+  plt.plot([0, 1], [0, 1],'r--')
+  plt.xlim([0, 1])
+  plt.ylim([0, 1])
+  plt.ylabel('True Positive Rate')
+  plt.xlabel('False Positive Rate')
+  plt.tight_layout()
+  plt.savefig("roc_%f.png" % threshold)
+
 def test(test_mode='anomaly', with_y=True):
   with tf.Graph().as_default():
     x_all = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 512, 1])
@@ -401,7 +430,7 @@ def test(test_mode='anomaly', with_y=True):
     encoder_state = None
     past_state = None
     future_state = None
-    x_1, y_1, encoder_state, past_state, future_state = network_template(x_all, encoder_state, past_state, future_state)
+    x_1, y_1, encoder_state, past_state, future_state = network_template(x, encoder_state, past_state, future_state)
 
     #past_loss_l2 = tf.nn.l2_loss(x[:,:FLAGS.seq_start,:,:] - x_1)
     future_loss_l2 = tf.nn.l2_loss(y - y_1)
@@ -440,22 +469,23 @@ def test(test_mode='anomaly', with_y=True):
     print("resume", latest)
     saver.restore(sess, latest)
     if not with_y:
-      files = find_files(FLAGS.data_dir)
+      files = find_files(FLAGS.test_data_index)
     else:
-      files = find_pairs(FLAGS.data_dir)
+      files = find_pairs(FLAGS.test_data_index)
     sample_dir = FLAGS.train_dir + '/samples/'
     
     if not os.path.exists(sample_dir):
       os.makedirs(sample_dir)
+
     for step in range(FLAGS.max_step):
-      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize='max')
+      dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
       x_t, y_t, im_x, im_y, dloss, e_loss, f_loss, eD3_loss, fD3_loss = sess.run([x, y, x_1, y_1, d_loss,
                                                             anomaly_loss_l2, fake_loss_l2,
                                                             anomaly_loss_D3, fake_loss_D3,],
                                                             feed_dict={x_all:dat, keep_prob:1.})
       
-      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=95, keepdims=True) #True for top 5% pixels
-      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=95, keepdims=True) #True for top 5% pixels
+      m1 = y_t>np.percentile(y_t, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
+      m2 = im_y>np.percentile(im_y, axis=(1,2,3), q=98, keepdims=True) #True for top 5% pixels
       #y_t /= np.mean(y_t*m1, axis=(1,2,3), keepdims=True)
       #y_g = im_y / np.mean(im_y/m2, axis=(1,2,3), keepdims=True)
       #y_d1 = y_g*~m2 - y_t*~m1
@@ -465,22 +495,26 @@ def test(test_mode='anomaly', with_y=True):
       val_anomaly = np.sum(m1[::-1]&m2, axis=(1,2,3))/np.sum(m1[::-1]|m2, axis=(1,2,3))
       print(val_normal)
       print(val_anomaly)
-      for thresh in np.arange(0.01, 0.2, 0.01):
+
+      for thresh in np.arange(0.01, 0.8, 0.02):
         n_correct = np.sum(val_normal>thresh) + np.sum(val_anomaly<thresh)
         acc = float(n_correct)/FLAGS.batch_size/2
         false_alarm = np.sum(val_normal<thresh).astype(float)/FLAGS.batch_size
         missed_detection = np.sum(val_anomaly>thresh).astype(float)/FLAGS.batch_size
         print(thresh, acc, false_alarm, missed_detection)
 
-      import IPython; IPython.embed()
-      #_plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'test_{}_past_t.png'.format(step))
-      #_plot_samples(im_x.squeeze(), sample_dir+'test_{}_past.png'.format(step))
-      #_plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'test_{}_future_t.png'.format(step))
-      #_plot_samples(im_y.squeeze(), sample_dir+'test_{}_future.png'.format(step))
-      print("loss", dloss)
+      #import IPython; IPython.embed()
+      _plot_samples(dat.squeeze(), sample_dir+'G1{}.png'.format(step))
+      _plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
+      _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'G3_{}.png'.format(step))
+      #print("loss", dloss)
       #import IPython; IPython.embed()
 
 def main(argv=None):  # pylint: disable=unused-argument
+  # create train/test split
+  if not os.path.isfile(FLAGS.train_data_index) or \
+      not os.path.isfile(FLAGS.test_data_index):
+    train_test_split(FLAGS.data_dir, FLAGS.train_data_index, FLAGS.test_data_index, FLAGS.split)
   if FLAGS.mode == "train":
     if not FLAGS.resume:
       if tf.gfile.Exists(FLAGS.train_dir):
