@@ -266,9 +266,9 @@ def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
         print("saved to " + FLAGS.train_dir)
 
         print("now saving sample!")
-        im_y = sess.run([y_1],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+        im_y = sess.run(y_1,feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         if match_mask:
-            im_y = im_y[...,1]
+          im_y = im_y[...,1]
         _plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'step_{}_past_t.png'.format(step))
         _plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
         _plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
@@ -397,7 +397,7 @@ def test(with_y=True):
       frames = []
       for step in range(nsteps):
         dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
-        im_y = sess.run([y_1], feed_dict={x_all:dat, keep_prob:1.})
+        im_y = sess.run(y_1, feed_dict={x_all:dat, keep_prob:1.})
         dat = np.concatenate([x_t, im_y], axis=1)
         frames.append(im_y)
       frames = np.concatenate(frames, axis=1).squeeze()
