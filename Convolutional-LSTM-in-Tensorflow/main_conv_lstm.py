@@ -101,7 +101,7 @@ def network(inputs, hidden):
   # conv7 = ld.transpose_conv_layer(conv6, (3,3), (1,2), 8, "decode_7")
   # x_1 
   conv7 = y_3
-  x_1 = ld.transpose_conv_layer(conv7, (3,3), (1,2), 1, "decode_8") # set activation to linear
+  x_1 = ld.transpose_conv_layer(conv7, (3,3), (1,2), 1, "decode_8", True) # set activation to linear
 
   return x_1, hidden
 
