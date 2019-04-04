@@ -24,7 +24,7 @@ tf.app.flags.DEFINE_string('preview_npy_path', 'preview_npy/',
                             """path to save preview images, in npy format""")
 tf.app.flags.DEFINE_integer('seq_length', 6,
                             """size of hidden layer""")
-tf.app.flags.DEFINE_integer('seq_start', 1,
+tf.app.flags.DEFINE_integer('seq_start', 3,
                             """ start of seq generation""")
 tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
@@ -65,7 +65,7 @@ def npy_data_loader(max_len):
     yield np.array(all_data)
 
 def network(inputs, hidden):
-  conv1 = ld.conv2d(inputs, (3,3), (1,2), 8, "encode_1")
+  conv1 = ld.conv2d(inputs, (3,3), (1,2), 1, "encode_1")
   # conv2
   # conv2 = ld.conv2d(conv1, (3,3), (1,2), 8, "encode_2")
   # conv3
@@ -76,19 +76,19 @@ def network(inputs, hidden):
   y_0 = conv1
   # conv lstm cell 
   with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
-    cell = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,32], 8)
+    cell = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,8], 8)
     if hidden is None:
       hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
     y_1, hidden = cell(y_0, hidden)
   
   with tf.variable_scope('conv_lstm_2', initializer = tf.random_uniform_initializer(-.01, 0.1)):  
-    cell2 = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,32], 8)
+    cell2 = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,8], 8)
     if hidden is None:
       hidden = cell2.zero_state(FLAGS.batch_size, tf.float32) 
     y_2, hidden = cell2(y_1, hidden)
     
   with tf.variable_scope('conv_lstm_3', initializer = tf.random_uniform_initializer(-.01, 0.1)):  
-    cell3 = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,32], 8)
+    cell3 = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,8], 8)
     if hidden is None:
       hidden = cell3.zero_state(FLAGS.batch_size, tf.float32) 
     y_3, hidden = cell3(y_2, hidden)
@@ -137,7 +137,7 @@ def train(loader):
     # this part will be used for generating video
     x_unwrap_g = []
     hidden_g = None
-    for i in range(50):
+    for i in range(10):
       if i < FLAGS.seq_start:
         x_1_g, hidden_g = network_template(x[:,i,:,:,:], hidden_g)
       else:
@@ -231,7 +231,7 @@ def train(loader):
         #plt.imshow(ims)
         #plt.savefig('ball_samples/step_{}.png'.format(step))
         #print(ims.shape)
-        #for i in range(50 - FLAGS.seq_start):
+        #for i in range(10 - FLAGS.seq_start):
         #  x_1_r = np.uint8(np.maximum(ims[i,:,:,:], 0) * 255)
         #  new_im = cv2.resize(x_1_r, (180,180))
         #  video.write(new_im)
