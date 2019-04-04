@@ -14,9 +14,9 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('train_dir', 'train',
                             """dir to store trained net""")
-tf.app.flags.DEFINE_string('data_dir', '/datax/scratch/yzhang/6-stacked/',
+tf.app.flags.DEFINE_string('data_dir', '/datax/scratch/yzhang/6-stacked',
                             """dir to find dataset""")
-tf.app.flags.DEFINE_string('data_file_format', '/*/*.npy',
+tf.app.flags.DEFINE_string('data_file_format', '/*/*/*.npy',
                             """data file path format, for glob""")
 tf.app.flags.DEFINE_string('preview_png_path', 'preview_png/',
                             """path to save preview images, in png format""")
