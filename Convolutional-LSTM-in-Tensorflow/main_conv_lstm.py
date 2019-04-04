@@ -55,17 +55,15 @@ def npy_data_loader(max_len):
     sys.exit(1)
   all_data = []
   while True:
-      for file in files:
-        data = np.load(file)
-        all_data.extend(data)
-        while len(all_data) >= max_len:
-            yield np.array(all_data[:max_len])
-            all_data = all_data[max_len:]
-  if all_data:
-    yield np.array(all_data)
+    for file in files:
+      data = np.load(file)
+      all_data.extend(data)
+      while len(all_data) >= max_len:
+          yield np.array(all_data[:max_len])
+          all_data = all_data[max_len:]
 
 def network(inputs, hidden):
-  conv1 = ld.conv2d(inputs, (3,3), (1,2), 1, "encode_1")
+  conv1 = ld.conv2d(inputs, (3,3), (1,1), 1, "encode_1")
   # conv2
   # conv2 = ld.conv2d(conv1, (3,3), (1,2), 8, "encode_2")
   # conv3
@@ -76,19 +74,19 @@ def network(inputs, hidden):
   y_0 = conv1
   # conv lstm cell 
   with tf.variable_scope('conv_lstm', initializer = tf.random_uniform_initializer(-.01, 0.1)):
-    cell = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,8], 8)
+    cell = BasicConvLSTMCell.BasicConvLSTMCell([16,128], [8,8], 16)
     if hidden is None:
       hidden = cell.zero_state(FLAGS.batch_size, tf.float32) 
     y_1, hidden = cell(y_0, hidden)
   
   with tf.variable_scope('conv_lstm_2', initializer = tf.random_uniform_initializer(-.01, 0.1)):  
-    cell2 = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,8], 8)
+    cell2 = BasicConvLSTMCell.BasicConvLSTMCell([16,128], [8,8], 16)
     if hidden is None:
       hidden = cell2.zero_state(FLAGS.batch_size, tf.float32) 
     y_2, hidden = cell2(y_1, hidden)
     
   with tf.variable_scope('conv_lstm_3', initializer = tf.random_uniform_initializer(-.01, 0.1)):  
-    cell3 = BasicConvLSTMCell.BasicConvLSTMCell([16,64], [8,8], 8)
+    cell3 = BasicConvLSTMCell.BasicConvLSTMCell([16,128], [8,8], 16)
     if hidden is None:
       hidden = cell3.zero_state(FLAGS.batch_size, tf.float32) 
     y_3, hidden = cell3(y_2, hidden)
@@ -101,7 +99,7 @@ def network(inputs, hidden):
   # conv7 = ld.transpose_conv_layer(conv6, (3,3), (1,2), 8, "decode_7")
   # x_1 
   conv7 = y_3
-  x_1 = ld.transpose_conv_layer(conv7, (3,3), (1,2), 1, "decode_8", True) # set activation to linear
+  x_1 = ld.transpose_conv_layer(conv7, (3,3), (1,1), 1, "decode_8", True) # set activation to linear
 
   return x_1, hidden
 
@@ -209,13 +207,12 @@ def train(loader):
         out = out[0][0][:7]
         out = out.reshape(out.shape[:-1])
         out = np.vstack(out)
-        out /= np.max(out)
         
         inputs = np.vstack(dat_gif[0].reshape(dat_gif[0].shape[:-1]))
         inputs = np.vstack([inputs, np.zeros(dat_gif[0].shape[1:-1])])
-        inputs /= np.max(inputs)
         
         ims = np.hstack([inputs, out])
+        ims /= np.max(ims)
         for i in range(ims.shape[0]):
             ims[i, dat_gif[0].shape[2]] = 0.5
             
