@@ -284,7 +284,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
 
     if not match_mask:
       past_loss_l2 = tf.nn.l2_loss(x_all[:, :FLAGS.seq_start, :,:,:] - x_unwrap[:, :FLAGS.seq_start, :,:,:])
-      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start+1:,:,:,:] - y_unwrap[:, FLAGS.seq_start:, :,:,:])
+      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
     else:
       x_mask = x_all > percentile(x_all, q=95.)
       x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
@@ -298,12 +298,15 @@ def train(with_gan=True, load_x=True, match_mask=False):
       future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_logit, labels=y))
       #import IPython; IPython.embed()
     if with_gan:
-      img = x_all[:,FLAGS.seq_start+1:,:,:,:]
-      img_ = y_unwrap[:,FLAGS.seq_start:,:,:,:]
+      img = x_all[:,FLAGS.seq_start:,:,:,:]
+      img_ = y_unwrap[:,FLAGS.seq_start-1:,:,:,:]
+      collapsed_shape = [-1, 48, 128, 1]
+      img = tf.reshape(img, collapsed_shape)
+      img_ = tf.reshape(img_, collapsed_shape)
       #import IPython; IPython.embed(i)
-      D, D_logits, D3 = discriminator(img[:,0,:,:,:], reuse=False)
+      D, D_logits, D3 = discriminator(img, reuse=False)
       #import IPython; IPython.embed()
-      D_, D_logits_, D3_ = discriminator(img[:,0,:,:,:], reuse=True, fc_shape=D3.get_shape().as_list())
+      D_, D_logits_, D3_ = discriminator(img_, reuse=True, fc_shape=D3.get_shape().as_list())
       d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                     logits=D_logits, labels=tf.ones_like(D)))
       d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
@@ -382,7 +385,6 @@ def train(with_gan=True, load_x=True, match_mask=False):
       else:
         i = 0
         while errG > 0.6:
-                              
             _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
             if i > 2: break
@@ -435,7 +437,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
         recon = np.vstack(recon)
         recon = np.vstack([recon, blank_im]) # append a blank
 
-        pred = np.vstack(im_x[0, :, :,:,:])
+        pred = np.vstack(im_y[0, :, :,:,:])
         pred = pred.reshape(pred.shape[:-1])
         pred = np.vstack(pred)
         pred = np.vstack([blank_im, pred]) # prepend a blank
