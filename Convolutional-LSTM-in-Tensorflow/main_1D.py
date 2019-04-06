@@ -272,7 +272,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       if i < FLAGS.seq_start:
         x_1, y_1, encoder_state, past_state, future_state = network_template(x_all[:,i,:,:,:], encoder_state, past_state, future_state)
       else:
-        x_1, y_1, encoder_state, past_state, future_state = network_template(x_1, encoder_state, past_state, future_state)
+        x_1, y_1, encoder_state, past_state, future_state = network_template(y_1, encoder_state, past_state, future_state)
       x_unwrap.append(x_1)
       y_unwrap.append(y_1)
 
@@ -380,20 +380,20 @@ def train(with_gan=True, load_x=True, match_mask=False):
       dat = random_flip(dat)
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-      if errG > 0.6 and errD>0.6:
+      if errG > 0.6 and errD>0.8:
         _, loss_r = sess.run([train_op, loss],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       else:
         i = 0
         while errG > 0.6:
             _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
-            if i > 2: break
+            if i > 5: break
             else:
                 errG = sess.run(g_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         print('G', i, errG)
 
         i = 0
-        while errD > 0.6:
+        while errD > 0.8:
             # only update discriminator if loss are within given bounds
             _ = sess.run(d_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
@@ -408,9 +408,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       if step%1 == 0 and step != 0:
         summary_str = sess.run(summary_op, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         summary_writer.add_summary(summary_str, step) 
-        print("time per batch is " + str(elapsed))
-        print(step)
-        print(loss_r)
+        print("{}: loss: {}, time: {}".format(step, loss_r, elapsed))
       
       assert not np.isnan(loss_r), 'Model diverged with loss = NaN'
 
