@@ -12,10 +12,11 @@ from ConvLSTM1D import BasicConvLSTMCell
 from BasicConvLSTMCell2d import BasicConvLSTMCell2d
 from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import matplotlib
-font = {'family' : 'normal',
-        'weight' : 'bold',
-        'size'   : 22}
+font = {'family' : 'DejaVu Sans',
+        'weight' : 'normal',
+        'size'   : 16}
 
 matplotlib.rc('font', **font)
 plt.switch_backend('agg')
@@ -30,7 +31,7 @@ tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
 # has been reformatted
 tf.app.flags.DEFINE_string('data_dir', '/datax/scratch/ayu/6-stacked',
                             """dir to load data""")
-tf.app.flags.DEFINE_string('norm_input', 'std',
+tf.app.flags.DEFINE_string('norm_input', 'max',
                             """normalization for data""")
 tf.app.flags.DEFINE_string('train_data_index', './train_data',
                             """index to load train data""")
@@ -60,6 +61,10 @@ tf.app.flags.DEFINE_boolean('resume', False,
                             """whether to load saved wieghts""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
+sample_dir = FLAGS.train_dir + '/samples/'
+if not os.path.exists(sample_dir):
+  os.makedirs(sample_dir)
+
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
   dat = np.zeros((batch_size, seq_length, shape, shape, 3))
   for i in range(batch_size):
@@ -79,8 +84,7 @@ def generate_x_batch(batch_size, t, f, n_sig=2, ret=False, noise=True):
     return pulse[..., tf.newaxis]
 
 def encode_stack(inputs, i):
-  conv1 = ld.conv_layer_1D(inputs, 3, 2, 8, "encode_{}".format(i+1))
-  # conv2
+  conv1 = ld.conv_layer_1D(inputs, 3, 2, 8, "encode_{}".format(i+1)) # conv2
   conv2 = ld.conv_layer_1D(conv1, 3, 1, 8, "encode_{}".format(i+2))
   return conv2
 
@@ -176,9 +180,12 @@ def network_2d(inputs, encoder_state, past_state, future_state):
   x_1 = ld.transpose_conv_layer(pconv3, (4,4), (1,1), 1, "present_output", True)
   # # future output
   y_1 = ld.transpose_conv_layer(fconv3, (4,4), (1,1), 1, "future_output", True)
+
+  x_1_s = tf.nn.sigmoid(x_1)
+  y_1_s = tf.nn.sigmoid(y_1)
   #x_1 = pconv3; y_1 = fconv3
   #import IPython; IPython.embed()
-  return x_1, y_1, encoder_state, past_state, future_state
+  return x_1_s, y_1_s, encoder_state, past_state, future_state
 
 # make a template for reuse
 network_template = tf.make_template('network', network_2d)
@@ -232,7 +239,52 @@ def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
     return tf.nn.sigmoid(h6), h6, h5
 
 
-def _plot_samples(samples, fname, pad='m', t_range=[0,10], n_columns=3, max_row=3):
+def _plot_samples(dat, im_x, im_y, fname, pad='m', t_range=[0,10]):
+
+    #blank_im = np.zeros(dat[0].shape[1:-1])
+    recon = im_x[0, :,:,:,:]
+    recon = recon.reshape(recon.shape[:-1])
+    #recon = np.vstack(recon)
+    #recon = np.vstack([recon, blank_im]) # append a blank
+
+    pred = im_y[0, :, :,:,:]
+    pred = pred.reshape(pred.shape[:-1])
+    #pred = np.vstack(pred)
+    #pred = np.vstack([blank_im, pred]) # prepend a blank
+
+    outputs_list = np.vstack([recon[:FLAGS.seq_start], pred[FLAGS.seq_start-1:]])
+    outputs = np.vstack(outputs_list)
+
+    inputs_list = dat[0].reshape(dat[0].shape[:-1])
+    inputs = np.vstack(inputs_list)
+    
+    # npy
+    ims = np.hstack([inputs, outputs])
+    # normalize
+    min_val, max_val = np.amin(ims), np.amax(ims) 
+    ims /= max_val
+    np.save(os.path.join(sample_dir, fname + ".npy"), ims)
+
+    # png
+    plt.figure(1, figsize=(16,10))
+    gs1 = gridspec.GridSpec(FLAGS.seq_length, 2)
+    gs1.update(wspace=0.01, hspace=0.01)
+    for i in range(FLAGS.seq_length):
+        ax = plt.subplot(gs1[2*i])
+        if i < FLAGS.seq_length - 1:
+            ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        plt.imshow(inputs_list[i], interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
+    for i in range(FLAGS.seq_length):
+        ax = plt.subplot(gs1[2*i+1])
+        if i < FLAGS.seq_length - 1:
+            ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_aspect('equal')
+        plt.imshow(outputs_list[i], interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
+    plt.savefig(os.path.join(sample_dir, fname + ".png"))
+
+    """
     batch_size = samples.shape[0]
     if pad == 'mid':
       print(np.zeros_like(samples[:,0,:])[:,np.newaxis,:].shape, samples.shape)
@@ -244,7 +296,10 @@ def _plot_samples(samples, fname, pad='m', t_range=[0,10], n_columns=3, max_row=
         plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, t_range[1],t_range[0]])
     print('saving', fname)
     plt.savefig(fname)
+    """
 
+def _binary_cross_entropy(x, x_hat):
+    return -tf.reduce_mean((1 - x) * tf.log(1 - x_hat) + x * tf.log(x_hat))
 
 def train(with_gan=True, load_x=True, match_mask=False):
   """Train ring_net for a number of steps."""
@@ -280,8 +335,10 @@ def train(with_gan=True, load_x=True, match_mask=False):
     y_unwrap = tf.transpose(y_unwrap, [1,0,2,3,4])
 
     if not match_mask:
-      past_loss_l2 = tf.nn.l2_loss(x_all[:, :-1, :,:,:] - x_unwrap)
-      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start - 1:, :,:,:])
+      #past_loss_l2 = tf.nn.l2_loss(x_all[:, :FLAGS.seq_start, :,:,:] - x_unwrap[:, :FLAGS.seq_start, :,:,:])
+      #future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start-1:,:,:,:] - y_unwrap[:, FLAGS.seq_start-2:, :,:,:])
+      past_loss_l2 = _binary_cross_entropy(x_all[:, :FLAGS.seq_start, :,:,:], x_unwrap[:, :FLAGS.seq_start, :,:,:])
+      future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start-1:,:,:,:], y_unwrap[:, FLAGS.seq_start-2:, :,:,:])
     else:
       x_mask = x_all > percentile(x_all, q=95.)
       x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
@@ -372,9 +429,6 @@ def train(with_gan=True, load_x=True, match_mask=False):
     graph_def = sess.graph.as_graph_def(add_shapes=True)
     summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph_def=graph_def)
     files = find_files(FLAGS.train_data_index)
-    sample_dir = FLAGS.train_dir + '/samples/'
-    if not os.path.exists(sample_dir):
-      os.makedirs(sample_dir)
     for step in range(FLAGS.max_step):
       dat = load_batch(FLAGS.batch_size, files, step, normalize=FLAGS.norm_input)
       dat = random_flip(dat)
@@ -411,7 +465,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       #_, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
       
-      if step%1 == 0 and step != 0:
+      if step%2 == 0: #and step != 0:
         summary_str, g_loss_r, past_loss_l2_r, future_loss_l2_r, D3_loss_r, d_loss_r = \
                 sess.run([summary_op, g_loss, past_loss_l2, future_loss_l2, D3_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         summary_writer.add_summary(summary_str, step) 
@@ -421,7 +475,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       
       assert not np.isnan(loss_r), 'Model diverged with loss = NaN'
 
-      if step%10 == 0:
+      if step%20 == 0:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)  
         print("saved to " + FLAGS.train_dir)
@@ -429,39 +483,10 @@ def train(with_gan=True, load_x=True, match_mask=False):
         print("now saving sample!", end='')
         sys.stdout.flush()
         im_x, im_y = sess.run([x_unwrap, y_unwrap],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-        #if match_mask:
-        #    im_x = im_x[...,1]
-        #    im_y = im_y[...,1]
-        #_plot_samples(dat[:,:FLAGS.seq_start,:,:].squeeze(), sample_dir+'step_{}_past_t.png'.format(step))
-        #_plot_samples(im_x.squeeze(), sample_dir+'step_{}_past.png'.format(step))
-        #_plot_samples(dat[:,FLAGS.seq_start:,:,:].squeeze(), sample_dir+'step_{}_future_t.png'.format(step))
-        #_plot_samples(im_y.squeeze(), sample_dir+'step_{}_future.png'.format(step))
-
-        dat_gif = dat
-        blank_im = np.zeros(dat_gif[0].shape[1:-1])
-        recon = np.vstack(im_x[0, :,:,:,:])
-        recon = recon.reshape(recon.shape[:-1])
-        recon = np.vstack(recon)
-        recon = np.vstack([recon, blank_im]) # append a blank
-
-        pred = np.vstack(im_y[0, :, :,:,:])
-        pred = pred.reshape(pred.shape[:-1])
-        pred = np.vstack(pred)
-        pred = np.vstack([blank_im, pred]) # prepend a blank
-        
-        inputs = np.vstack(dat_gif[0].reshape(dat_gif[0].shape[:-1]))
-        
-        ims = np.hstack([inputs, recon, pred])
-        # normalize
-        ims /= np.max(ims)
-        # draw lines between images
-        for j in range(dat_gif[0].shape[2], ims.shape[1], dat_gif[0].shape[2]):
-            for i in range(ims.shape[0]):
-                ims[i, j] = 0.5
-        for i in range(dat_gif[0].shape[1], ims.shape[0], dat_gif[0].shape[1]):
-            for j in range(ims.shape[1]):
-                ims[i, j] = 0.5
-        np.save(os.path.join(sample_dir, 'step_{}.npy'.format(step)), ims)
+        if match_mask:
+            im_x = im_x[...,1]
+            im_y = im_y[...,1]
+        _plot_samples(dat, im_x, im_y, '%05d' % step)
         print(" - saved")
  
 def _plot_roc(data, percent, save):
@@ -482,6 +507,7 @@ def _plot_roc(data, percent, save):
   plt.savefig(save + "_roc.pdf")
 
 def test():
+  # test implementation not fixed
   with tf.Graph().as_default():
     x_all = tf.placeholder(tf.float32, [None, FLAGS.seq_length, 16, 128, 1])
 
@@ -553,10 +579,6 @@ def test():
     print("resume", latest)
     saver.restore(sess, latest)
     files = find_files(FLAGS.test_data_index)
-    sample_dir = FLAGS.train_dir + '/samples/'
-    
-    if not os.path.exists(sample_dir):
-      os.makedirs(sample_dir)
 
     if FLAGS.test_mode == 'ROC':
       nsteps = min(500, FLAGS.max_step)
@@ -588,9 +610,10 @@ def test():
             ROC[step, fi, ti, 1] = true_positive_rate
         #import IPython; IPython.embed()
         if step < 2:
-          _plot_samples(dat.squeeze(), sample_dir+'GT{}.pdf'.format(step))
+          pass
+          #_plot_samples(dat.squeeze(), sample_dir+'GT{}.pdf'.format(step))
           #_plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
-          _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.pdf'.format(step))
+          #_plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.pdf'.format(step))
           #print("loss", dloss)
           #import IPython; IPython.embed()
       ROC = np.mean(ROC, axis=0)
@@ -608,7 +631,8 @@ def test():
         frames.append(im_y)
       frames = np.concatenate(frames, axis=1).squeeze()
       for i in range(min(10, FLAGS.batch_size//2)):
-        _plot_samples(frames[i:i+2], sample_dir+'hallucinate{}.pdf'.format(i), pad=None, t_range=[0,5*nsteps], n_columns=2, max_row=1)
+        pass
+        #_plot_samples(frames[i:i+2], sample_dir+'hallucinate{}.pdf'.format(i), pad=None, t_range=[0,5*nsteps], n_columns=2, max_row=1)
 
 
 def main(argv=None):  # pylint: disable=unused-argument
