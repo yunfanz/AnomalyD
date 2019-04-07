@@ -47,7 +47,7 @@ tf.app.flags.DEFINE_string('train_mode', 'with_gan',
                             """train or test""")
 tf.app.flags.DEFINE_integer('seq_length', 6,
                             """size of hidden layer""")
-tf.app.flags.DEFINE_integer('seq_start', 3,
+tf.app.flags.DEFINE_integer('seq_start', 1,
                             """ start of seq generation""")
 tf.app.flags.DEFINE_integer('max_step', 200000,
                             """max num of steps""")
@@ -241,19 +241,16 @@ def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
 
 def _plot_samples(dat, im_x, im_y, fname, pad='m', t_range=[0,10]):
 
-    #blank_im = np.zeros(dat[0].shape[1:-1])
+    blank_im = np.zeros(dat[0].shape[1:-1])
     recon = im_x[0, :,:,:,:]
     recon = recon.reshape(recon.shape[:-1])
-    #recon = np.vstack(recon)
-    #recon = np.vstack([recon, blank_im]) # append a blank
+    recon_im = np.vstack(recon[1:, :, :])
+    recon_im = np.vstack([recon_im, blank_im, blank_im]) # append a blank
 
     pred = im_y[0, :, :,:,:]
     pred = pred.reshape(pred.shape[:-1])
-    #pred = np.vstack(pred)
-    #pred = np.vstack([blank_im, pred]) # prepend a blank
-
-    outputs_list = np.vstack([recon[:FLAGS.seq_start], pred[FLAGS.seq_start-1:]])
-    outputs = np.vstack(outputs_list)
+    pred_im = np.vstack(pred)
+    pred_im = np.vstack([blank_im, pred_im]) # prepend a blank
 
     inputs_list = dat[0].reshape(dat[0].shape[:-1])
     inputs = np.vstack(inputs_list)
@@ -262,7 +259,7 @@ def _plot_samples(dat, im_x, im_y, fname, pad='m', t_range=[0,10]):
       os.makedirs(sample_dir)
     
     # npy
-    ims = np.hstack([inputs, outputs])
+    ims = np.hstack([inputs, recon_im, pred_im])
     # normalize
     min_val, max_val = np.amin(ims), np.amax(ims) 
     ims /= max_val
@@ -270,21 +267,35 @@ def _plot_samples(dat, im_x, im_y, fname, pad='m', t_range=[0,10]):
 
     # png
     plt.figure(1, figsize=(16,10))
-    gs1 = gridspec.GridSpec(FLAGS.seq_length, 2)
+    gs1 = gridspec.GridSpec(FLAGS.seq_length, 3)
     gs1.update(wspace=0.01, hspace=0.01)
     for i in range(FLAGS.seq_length):
-        ax = plt.subplot(gs1[2*i])
+        ax = plt.subplot(gs1[3*i])
         if i < FLAGS.seq_length - 1:
             ax.set_xticklabels([])
         ax.set_yticklabels([])
         plt.imshow(inputs_list[i], interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
     for i in range(FLAGS.seq_length):
-        ax = plt.subplot(gs1[2*i+1])
+        ax = plt.subplot(gs1[3*i+1])
         if i < FLAGS.seq_length - 1:
             ax.set_xticklabels([])
         ax.set_yticklabels([])
         ax.set_aspect('equal')
-        plt.imshow(outputs_list[i], interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
+        if i >= FLAGS.seq_length - 2:
+            plt.imshow(blank_im, interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
+        else:
+            plt.imshow(recon[i+1], interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
+    for i in range(FLAGS.seq_length):
+        ax = plt.subplot(gs1[3*i+2])
+        if i < FLAGS.seq_length - 1:
+            ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_aspect('equal')
+        if i == 0:
+            plt.imshow(blank_im, interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
+        else:
+            plt.imshow(pred[i-1], interpolation="nearest", cmap="viridis", aspect='auto', vmin=min_val, vmax=max_val)
+
     plt.savefig(os.path.join(sample_dir, fname + ".png"))
 
     """
@@ -340,8 +351,8 @@ def train(with_gan=True, load_x=True, match_mask=False):
     if not match_mask:
       #past_loss_l2 = tf.nn.l2_loss(x_all[:, :FLAGS.seq_start, :,:,:] - x_unwrap[:, :FLAGS.seq_start, :,:,:])
       #future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start-1:,:,:,:] - y_unwrap[:, FLAGS.seq_start-2:, :,:,:])
-      past_loss_l2 = _binary_cross_entropy(x_all[:, :FLAGS.seq_start, :,:,:], x_unwrap[:, :FLAGS.seq_start, :,:,:])
-      future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start-1:,:,:,:], y_unwrap[:, FLAGS.seq_start-2:, :,:,:])
+      past_loss_l2 = _binary_cross_entropy(x_all[:, :-2, :,:,:], x_unwrap[:, 1:, :,:,:])
+      future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start:,:,:,:], y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
     else:
       x_mask = x_all > percentile(x_all, q=95.)
       x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
@@ -355,9 +366,9 @@ def train(with_gan=True, load_x=True, match_mask=False):
       future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_logit, labels=y))
       #import IPython; IPython.embed()
     if with_gan:
-      img = x_all[:,FLAGS.seq_start-2:,:,:,:]
+      img = x_all[:,FLAGS.seq_start:,:,:,:]
       img_ = y_unwrap
-      collapsed_shape = [-1, 16 * (FLAGS.seq_length - FLAGS.seq_start + 1), 128, 1]
+      collapsed_shape = [-1, 16 * (FLAGS.seq_length - FLAGS.seq_start), 128, 1]
       img = tf.reshape(img, collapsed_shape)
       img_ = tf.reshape(img_, collapsed_shape)
       #import IPython; IPython.embed(i)
@@ -380,7 +391,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       tf.summary.scalar('loss_feature', D3_loss)
 
       # loss def
-      loss = 0.003*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*9e-5
+      loss = 10*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*1.e-4
 
       tf.summary.scalar('past_loss_l2', past_loss_l2)
       tf.summary.scalar('future_loss_l2', future_loss_l2)
