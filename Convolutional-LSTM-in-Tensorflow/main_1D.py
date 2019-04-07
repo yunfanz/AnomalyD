@@ -36,8 +36,6 @@ tf.app.flags.DEFINE_string('train_data_index', './train_data',
                             """index to load train data""")
 tf.app.flags.DEFINE_string('test_data_index', './test_data',
                             """index to load test data""")
-tf.app.flags.DEFINE_string('preview_npy_path', 'preview_npy/',
-                            """path to save preview images, in npy format""")
 tf.app.flags.DEFINE_float('split', .9,
                             """train data proportion""")
 tf.app.flags.DEFINE_string('mode', 'train',
@@ -61,9 +59,6 @@ tf.app.flags.DEFINE_integer('batch_size', 32,
 tf.app.flags.DEFINE_boolean('resume', False,
                             """whether to load saved wieghts""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
-
-if not os.path.exists(FLAGS.preview_npy_path):
-    os.mkdir(FLAGS.preview_npy_path)
 
 def generate_bouncing_ball_sample(batch_size, seq_length, shape, num_balls):
   dat = np.zeros((batch_size, seq_length, shape, shape, 3))
@@ -269,10 +264,10 @@ def train(with_gan=True, load_x=True, match_mask=False):
     future_state = None
 
     for i in range(FLAGS.seq_length-1):
-      if i < FLAGS.seq_start:
-        x_1, y_1, encoder_state, past_state, future_state = network_template(x_all[:,i,:,:,:], encoder_state, past_state, future_state)
-      else:
-        x_1, y_1, encoder_state, past_state, future_state = network_template(y_1, encoder_state, past_state, future_state)
+      #if i < FLAGS.seq_start:
+      x_1, y_1, encoder_state, past_state, future_state = network_template(x_all[:,i,:,:,:], encoder_state, past_state, future_state)
+      #else:
+      # x_1, y_1, encoder_state, past_state, future_state = network_template(y_1, encoder_state, past_state, future_state)
       x_unwrap.append(x_1)
       y_unwrap.append(y_1)
 
@@ -283,8 +278,8 @@ def train(with_gan=True, load_x=True, match_mask=False):
     y_unwrap = tf.transpose(y_unwrap, [1,0,2,3,4])
 
     if not match_mask:
-      past_loss_l2 = tf.nn.l2_loss(x_all[:, :FLAGS.seq_start, :,:,:] - x_unwrap[:, :FLAGS.seq_start, :,:,:])
-      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
+      past_loss_l2 = tf.nn.l2_loss(x_all[:, :-1, :,:,:] - x_unwrap)
+      future_loss_l2 = tf.nn.l2_loss(x_all[:, 1:,:,:,:] - y_unwrap)
     else:
       x_mask = x_all > percentile(x_all, q=95.)
       x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
@@ -321,13 +316,13 @@ def train(with_gan=True, load_x=True, match_mask=False):
       tf.summary.scalar('loss_g', g_loss)
       tf.summary.scalar('loss_d', d_loss)
       tf.summary.scalar('loss_feature', D3_loss)
-      loss = 0.05*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*1.e-4
+      loss = 1e-3*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*5.e-5
       tf.summary.scalar('past_loss_l2', past_loss_l2)
       tf.summary.scalar('future_loss_l2', future_loss_l2)
       d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
       g_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss, var_list=g_vars)
       #import IPython; IPython.embed()
-      train_op = tf.group(d_optim, d_optim, g_optim)
+      train_op = tf.group(d_optim, g_optim) #tf.group(d_optim, d_optim, g_optim)
 
     else:
       loss = past_loss_l2 + future_loss_l2
@@ -380,35 +375,42 @@ def train(with_gan=True, load_x=True, match_mask=False):
       dat = random_flip(dat)
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-      if errG > 0.6 and errD>0.8:
+      if errG > 0.6 and errD>0.6:
         _, loss_r = sess.run([train_op, loss],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       else:
         i = 0
+        print('   G', end=' ')
         while errG > 0.6:
             _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
-            if i > 5: break
+            if i > 2: break
             else:
                 errG = sess.run(g_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-        print('G', i, errG)
+            print(i, errG, end=', ')
+        print(i, errG, end='; ')
 
         i = 0
-        while errD > 0.8:
+        print('D', end=' ')
+        while errD > 0.6:
             # only update discriminator if loss are within given bounds
             _ = sess.run(d_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
             if i > 2: break
             else:
                 errD = sess.run(d_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-        print('D', i, errD)
+            print(i, errD, end=', ')
+        print(i, errD)
         loss_r = sess.run(loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       #_, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
       
       if step%1 == 0 and step != 0:
-        summary_str = sess.run(summary_op, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
+        summary_str, g_loss_r, past_loss_l2_r, future_loss_l2_r, D3_loss_r, d_loss_r = \
+                sess.run([summary_op, g_loss, past_loss_l2, future_loss_l2, D3_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         summary_writer.add_summary(summary_str, step) 
         print("{}: loss: {}, time: {}".format(step, loss_r, elapsed))
+        print("   G errG: {}, past: {}, fut: {}, D3: {}".format(g_loss_r, past_loss_l2_r, future_loss_l2_r, D3_loss_r))
+        print("   D errD: {}".format(d_loss_r))
       
       assert not np.isnan(loss_r), 'Model diverged with loss = NaN'
 
@@ -452,7 +454,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
         for i in range(dat_gif[0].shape[1], ims.shape[0], dat_gif[0].shape[1]):
             for j in range(ims.shape[1]):
                 ims[i, j] = 0.5
-        np.save(os.path.join(FLAGS.preview_npy_path, 'step_{}.npy'.format(step)), ims)
+        np.save(os.path.join(sample_dir, 'step_{}.npy'.format(step)), ims)
         print(" - saved")
  
 def _plot_roc(data, percent, save):
