@@ -13,6 +13,11 @@ def train_test_split(directory, train, test, split=.8, sortby='shuffle'):
     if sortby == 'shuffle':
         np.random.shuffle(files)
 
+    if not files:
+        print('No data files found!\n')
+        import sys
+        sys.exit(1)
+
     train_len = int(len(files) * split)
     with open(train, 'w+') as train_file:
         mixed = files[:train_len]
