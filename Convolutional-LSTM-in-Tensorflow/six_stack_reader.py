@@ -51,14 +51,18 @@ def load_batch(batch_size, files, index, normalize='max'):
         img = np.load(files[i])
         batch.append(img)
     batch = np.stack(batch, axis=0)
-    for i in range(batch.shape[0]):
-        if normalize == 'batch':
-            batch[i] = batch[i]/np.amax(batch[i])#*20.
-        elif normalize == 'max':
-            batch[i] = batch[i]/np.amax(batch[i], axis=(1,2),keepdims=True)#*20.
-        elif normalize == 'noise':
-            mask = batch[i] < np.percentile(batch[i], q=95, axis=(1,2), keepdims=True)
-            batch[i] /= np.mean(batch[i]*mask, axis=(1,2), keepdims=True)*5
+    if normalize == 'batch':
+        batch = batch/np.amax(batch)#*20.
+    elif normalize == 'max':
+        batch = batch/np.amax(batch, axis=(2,3),keepdims=True)#*20.
+    elif normalize == 'mean':
+        batch = batch/np.mean(batch, axis=(2,3),keepdims=True)#*20.
+    elif normalize == 'std':
+        batch = batch - np.amin(batch, axis=(2,3),keepdims=True)#*20.
+        batch = batch/np.std(batch, axis=(2,3),keepdims=True)#*20.
+    elif normalize == 'noise':
+        mask = batch < np.percentile(batch, q=95, axis=(2,3), keepdims=True)
+        batch /= np.mean(batch*mask, axis=(2,3), keepdims=True)*5
     return batch
 
 def random_flip(batch):

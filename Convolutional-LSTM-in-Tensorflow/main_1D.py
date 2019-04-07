@@ -30,8 +30,8 @@ tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
 # has been reformatted
 tf.app.flags.DEFINE_string('data_dir', '/datax/scratch/ayu/6-stacked',
                             """dir to load data""")
-tf.app.flags.DEFINE_string('norm_input', 'max',
-                            """dir to load data""")
+tf.app.flags.DEFINE_string('norm_input', 'std',
+                            """normalization for data""")
 tf.app.flags.DEFINE_string('train_data_index', './train_data',
                             """index to load train data""")
 tf.app.flags.DEFINE_string('test_data_index', './test_data',
@@ -132,45 +132,45 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, (4,4), (1,1), 4, "encode")
+  conv = ld.conv2d(inputs, (4,4), (1,1), 8, "encode")
   #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell1 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    cell1 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     if encoder_state is None:
       encoder_state = cell1.zero_state(FLAGS.batch_size, tf.float32) 
     conv1, encoder_state = cell1(conv, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell2 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    cell2 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     conv2, encoder_state = cell2(conv1, encoder_state)
   with tf.variable_scope('conv_lstm_encoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    cell3 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    cell3 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     conv3, encoder_state = cell3(conv2, encoder_state)
   
   # past decoder convlstm 
   with tf.variable_scope('past_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell1 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    pcell1 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     if past_state is None:
       past_state = pcell1.zero_state(FLAGS.batch_size, tf.float32) 
     pconv1, past_state = pcell1(conv1, past_state)
   with tf.variable_scope('past_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell2 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    pcell2 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     pconv2, past_state = pcell2(conv2, past_state)
   with tf.variable_scope('past_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    pcell3 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    pcell3 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     pconv3, past_state = pcell3(conv3, past_state)
 
   # future decoder convlstm 
   with tf.variable_scope('future_decoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell1 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    fcell1 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     if future_state is None:
       future_state = fcell1.zero_state(FLAGS.batch_size, tf.float32) 
     fconv1, future_state = fcell1(conv1, future_state)
   with tf.variable_scope('future_decoder_2', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell2 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    fcell2 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     fconv2, future_state = fcell2(conv2, future_state)
   with tf.variable_scope('future_decoder_3', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
-    fcell3 = BasicConvLSTMCell2d([16, 128], [8, 8], 4)
+    fcell3 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     fconv3, future_state = fcell3(conv3, future_state)
   # present output
   x_1 = ld.transpose_conv_layer(pconv3, (4,4), (1,1), 1, "present_output", True)
@@ -183,26 +183,28 @@ def network_2d(inputs, encoder_state, past_state, future_state):
 # make a template for reuse
 network_template = tf.make_template('network', network_2d)
 def discriminator(image, df_dim=16, reuse=False, fc_shape=None):
+  # the discriminator network
   with tf.variable_scope("discriminator") as scope:
     if reuse:
-      scope.reuse_variables()
-    image = tf.nn.avg_pool(image, 
-                                    ksize=[1, 1, 4, 1],
-                                    strides=[1, 1, 4, 1],
-                                    padding='SAME')
-    h0 = ld.conv2d(image, (3, 7),(1,2),df_dim, name='d_h0_conv')
-    h1 = ld.conv2d(h0, (3, 7),(1,1),df_dim*2, name='d_h1_conv')
-    h2 = ld.conv2d(h1, (3, 5),(1,2),df_dim*4, name='d_h2_conv')
-    h3 = ld.conv2d(h2, (3, 5),(1,1),df_dim*8, name='d_h3_conv')
-    h4 = ld.conv2d(h3, (3, 3),(1,2),df_dim*16, name='d_h4_conv')
-    h5 = ld.conv2d(h4, (3, 3),(1,1),df_dim*16, name='d_h5_conv')
+      scope.reuse_variables() # 64 128
+    h0 = ld.conv2d(image, (3, 3),(1,1),df_dim, name='d_h0_conv') 
+    h0 = ld.conv2d(image, (3, 3),(1,2),df_dim, name='d_h00_conv') # 64 64
+    h1 = ld.conv2d(h0, (3, 3),(1,1),df_dim*2, name='d_h1_conv') 
+    h2 = ld.conv2d(h1, (3, 3),(2,2),df_dim*2, name='d_h11_conv') # 32 32
+    h2 = ld.conv2d(h1, (3, 3),(1,1),df_dim*4, name='d_h2_conv')
+    h2 = ld.conv2d(h1, (3, 3),(2,2),df_dim*4, name='d_h22_conv') # 16 16
+    h3 = ld.conv2d(h2, (3, 3),(1,1),df_dim*8, name='d_h3_conv') 
+    h3 = ld.conv2d(h2, (3, 3),(2,2),df_dim*8, name='d_h33_conv') # 8 8 
+    h4 = ld.conv2d(h3, (3, 3),(1,1),df_dim*16, name='d_h4_conv') 
+    h5 = ld.conv2d(h4, (3, 3),(2,2),df_dim*16, name='d_h5_conv') # 4 4
 
     #import IPython; IPython.embed()
-    h6 = ld.fc_layer(h5, 1, name='d_h6_lin', linear=True, flat=True, input_shape=fc_shape)
+    h6 = ld.fc_layer(h5, 1, name='d_h6_lin', linear=True, flat=True, input_shape=fc_shape) # 1 1
 
     return tf.nn.sigmoid(h6), h6, h5
 
 def discriminator_buff(image, df_dim=32, reuse=False, fc_shape=None):
+  # wtf is this?
   with tf.variable_scope("discriminator") as scope:
     if reuse:
       scope.reuse_variables()
@@ -279,7 +281,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
 
     if not match_mask:
       past_loss_l2 = tf.nn.l2_loss(x_all[:, :-1, :,:,:] - x_unwrap)
-      future_loss_l2 = tf.nn.l2_loss(x_all[:, 1:,:,:,:] - y_unwrap)
+      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start - 1:, :,:,:])
     else:
       x_mask = x_all > percentile(x_all, q=95.)
       x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
@@ -293,9 +295,9 @@ def train(with_gan=True, load_x=True, match_mask=False):
       future_loss_l2 = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(logits=y_logit, labels=y))
       #import IPython; IPython.embed()
     if with_gan:
-      img = x_all[:,FLAGS.seq_start:,:,:,:]
-      img_ = y_unwrap[:,FLAGS.seq_start-1:,:,:,:]
-      collapsed_shape = [-1, 48, 128, 1]
+      img = x_all[:,FLAGS.seq_start-2:,:,:,:]
+      img_ = y_unwrap
+      collapsed_shape = [-1, 16 * (FLAGS.seq_length - FLAGS.seq_start + 1), 128, 1]
       img = tf.reshape(img, collapsed_shape)
       img_ = tf.reshape(img_, collapsed_shape)
       #import IPython; IPython.embed(i)
@@ -316,7 +318,10 @@ def train(with_gan=True, load_x=True, match_mask=False):
       tf.summary.scalar('loss_g', g_loss)
       tf.summary.scalar('loss_d', d_loss)
       tf.summary.scalar('loss_feature', D3_loss)
-      loss = 1e-3*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*5.e-5
+
+      # loss def
+      loss = 0.003*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*9e-5
+
       tf.summary.scalar('past_loss_l2', past_loss_l2)
       tf.summary.scalar('future_loss_l2', future_loss_l2)
       d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
@@ -396,10 +401,10 @@ def train(with_gan=True, load_x=True, match_mask=False):
             # only update discriminator if loss are within given bounds
             _ = sess.run(d_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
-            if i > 2: break
+            if i > 3: break
             else:
                 errD = sess.run(d_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-                if i < 2:
+                if i < 3:
                     print(i, errD, end=', ')
         print(i-1, errD)
         loss_r = sess.run(loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
