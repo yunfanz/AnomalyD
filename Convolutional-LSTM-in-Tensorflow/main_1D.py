@@ -257,6 +257,9 @@ def _plot_samples(dat, im_x, im_y, fname, pad='m', t_range=[0,10]):
 
     inputs_list = dat[0].reshape(dat[0].shape[:-1])
     inputs = np.vstack(inputs_list)
+
+    if not os.path.exists(sample_dir):
+      os.makedirs(sample_dir)
     
     # npy
     ims = np.hstack([inputs, outputs])
