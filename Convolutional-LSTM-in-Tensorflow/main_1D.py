@@ -322,7 +322,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       d_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(d_loss, var_list=d_vars)
       g_optim = tf.train.AdamOptimizer(FLAGS.lr).minimize(loss, var_list=g_vars)
       #import IPython; IPython.embed()
-      train_op = tf.group(d_optim, g_optim) #tf.group(d_optim, d_optim, g_optim)
+      train_op = tf.group(d_optim, d_optim, g_optim)
 
     else:
       loss = past_loss_l2 + future_loss_l2
@@ -379,15 +379,16 @@ def train(with_gan=True, load_x=True, match_mask=False):
         _, loss_r = sess.run([train_op, loss],feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       else:
         i = 0
-        print('   G', end=' ')
+        print('   partial G', end=' ')
         while errG > 0.6:
             _ = sess.run(g_optim, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
             i+=1
-            if i > 2: break
+            if i > 3: break
             else:
                 errG = sess.run(g_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-            print(i, errG, end=', ')
-        print(i, errG, end='; ')
+                if i < 3:
+                    print(i, errG, end=', ')
+        print(i-1, errG, end='; ')
 
         i = 0
         print('D', end=' ')
@@ -398,8 +399,9 @@ def train(with_gan=True, load_x=True, match_mask=False):
             if i > 2: break
             else:
                 errD = sess.run(d_loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
-            print(i, errD, end=', ')
-        print(i, errD)
+                if i < 2:
+                    print(i, errD, end=', ')
+        print(i-1, errD)
         loss_r = sess.run(loss, feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       #_, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
