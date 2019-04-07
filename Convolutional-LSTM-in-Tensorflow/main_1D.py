@@ -349,10 +349,10 @@ def train(with_gan=True, load_x=True, match_mask=False):
     y_unwrap = tf.transpose(y_unwrap, [1,0,2,3,4])
 
     if not match_mask:
-      #past_loss_l2 = tf.nn.l2_loss(x_all[:, :FLAGS.seq_start, :,:,:] - x_unwrap[:, :FLAGS.seq_start, :,:,:])
-      #future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start-1:,:,:,:] - y_unwrap[:, FLAGS.seq_start-2:, :,:,:])
-      past_loss_l2 = _binary_cross_entropy(x_all[:, :-2, :,:,:], x_unwrap[:, 1:, :,:,:])
-      future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start:,:,:,:], y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
+      past_loss_l2 = tf.nn.l2_loss(x_all[:, :-2, :,:,:] - x_unwrap[:, 1:, :,:,:])
+      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
+      #past_loss_l2 = _binary_cross_entropy(x_all[:, :-2, :,:,:], x_unwrap[:, 1:, :,:,:])
+      #future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start:,:,:,:], y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
     else:
       x_mask = x_all > percentile(x_all, q=95.)
       x_mask = tf.one_hot(tf.cast(x_mask, tf.int32), depth=2, axis=-1)
@@ -391,7 +391,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       tf.summary.scalar('loss_feature', D3_loss)
 
       # loss def
-      loss = 10*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*1.e-4
+      loss = 1.e-3*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*1.e-4
 
       tf.summary.scalar('past_loss_l2', past_loss_l2)
       tf.summary.scalar('future_loss_l2', future_loss_l2)
