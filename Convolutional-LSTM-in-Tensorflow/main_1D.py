@@ -57,6 +57,10 @@ tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
 tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
+tf.app.flags.DEFINE_integer('print_every', 10,
+                            """batch size for training""")
+tf.app.flags.DEFINE_integer('save_every', 100,
+                            """batch size for training""")
 tf.app.flags.DEFINE_boolean('resume', False,
                             """whether to load saved wieghts""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
@@ -479,7 +483,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       #_, loss_r = sess.run([train_op, loss],feed_dict={x:dat, keep_prob:FLAGS.keep_prob})
       elapsed = time.time() - t
       
-      if step%2 == 0: #and step != 0:
+      if step % FLAGS.print_every == 0: #and step != 0:
         summary_str, g_loss_r, past_loss_l2_r, future_loss_l2_r, D3_loss_r, d_loss_r = \
                 sess.run([summary_op, g_loss, past_loss_l2, future_loss_l2, D3_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
         summary_writer.add_summary(summary_str, step) 
@@ -489,7 +493,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       
       assert not np.isnan(loss_r), 'Model diverged with loss = NaN'
 
-      if step%20 == 0:
+      if step % FLAGS.save_every == 0:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)  
         print("saved to " + FLAGS.train_dir)
