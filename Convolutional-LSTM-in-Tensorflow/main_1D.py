@@ -19,7 +19,7 @@ font = {'family' : 'normal',
         'size'   : 22}
 
 matplotlib.rc('font', **font)
-plt.switch_backend('agg')
+#plt.switch_backend('agg')
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
@@ -234,13 +234,24 @@ def _plot_samples(samples, fname, pad='m', t_range=[0,10], n_columns=3, max_row=
     if pad == 'mid':
       print(np.zeros_like(samples[:,0,:])[:,np.newaxis,:].shape, samples.shape)
       samples = np.concatenate([samples[:,:FLAGS.seq_start,:], np.zeros_like(samples[:,0,:])[:,np.newaxis,:],samples[:,FLAGS.seq_start:,:]], axis=1)
-    plt.figure(1, figsize=(16,10))
+    plt.figure(1, figsize=(12,16))
     n_rows = min(math.ceil(batch_size / n_columns) + 1, max_row)
     for i in range(min(batch_size, n_columns*n_rows)):
         plt.subplot(n_rows, n_columns, i+1)
         plt.imshow(samples[i], interpolation="nearest", cmap="hot", aspect='auto', extent=[-3*.256,3*0.256, t_range[1],t_range[0]])
+        plt.axis('off')
     print('saving', fname)
     plt.savefig(fname)
+
+def _plot_comparisons(dats, pref, stack_size=5):
+    batch, batch_ = dats
+    stack = []
+    for k, (img, img_) in enumerate(zip(batch, batch_)):
+      if k>0 and k % stack_size == 0:
+        _plot_samples(np.stack(stack, axis=0), fname=pref+str(k)+'.pdf', pad='mid', n_columns=2, max_row=6)
+        stack = [img, img_]
+      else:
+        stack = stack + [img, img_]
 
 
 def train(with_gan=True, load_x=True, with_y=True, match_mask=False):
@@ -423,6 +434,7 @@ def _plot_roc(data, percent, save):
   plt.ylabel('True Positive Rate')
   plt.xlabel('False Positive Rate')
   plt.tight_layout()
+  plt.show()
   plt.savefig(save + "_roc.pdf")
 
 def test(with_y=True):
@@ -483,6 +495,7 @@ def test(with_y=True):
       files = find_files(FLAGS.test_data_index)
     else:
       files = find_pairs(FLAGS.test_data_index)
+      files = sorted(files, key=lambda x: x[0])
     sample_dir = FLAGS.train_dir + '/samples/'
     
     if not os.path.exists(sample_dir):
@@ -517,10 +530,16 @@ def test(with_y=True):
             ROC[step, fi, ti, 0] = false_alarm_rate
             ROC[step, fi, ti, 1] = true_positive_rate
         #import IPython; IPython.embed()
-        if step < 2:
-          _plot_samples(dat.squeeze(), sample_dir+'GT{}.pdf'.format(step))
+
+        if step < 100:
+          batch, batch_ = dat.squeeze(),np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1)
+          #np.save
+          #theta = 0.05
+          #batch, batch_ = batch[val_normal<theta], batch_[val_normal<theta]
+          _plot_comparisons([batch, batch_], pref=sample_dir+'Comp_{}'.format(step))
+          #_plot_samples(dat.squeeze(), sample_dir+'GT{}.pdf'.format(step))
           #_plot_samples(np.concatenate([x_t.squeeze(), y_t.squeeze()], axis=1), sample_dir+'G2_{}.png'.format(step))
-          _plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.pdf'.format(step))
+          #_plot_samples(np.concatenate([im_x.squeeze(), im_y.squeeze()], axis=1), sample_dir+'PRED_{}.pdf'.format(step))
           #print("loss", dloss)
           #import IPython; IPython.embed()
       ROC = np.mean(ROC, axis=0)
@@ -531,13 +550,13 @@ def test(with_y=True):
     elif FLAGS.test_mode == 'hallucinate':
       nsteps = 5
       frames = []
+      dat = load_batch(FLAGS.batch_size, files, 0, with_y=with_y, normalize=FLAGS.norm_input)
       for step in range(nsteps):
-        dat = load_batch(FLAGS.batch_size, files, step, with_y=with_y, normalize=FLAGS.norm_input)
         im_x, im_y = sess.run([x_1, y_1], feed_dict={x_all:dat, keep_prob:1.})
-        dat = np.concatenate([im_x, im_y], axis=1)
+        dat = np.concatenate([im_y, np.zeros_like(im_y)], axis=1)
         frames.append(im_y)
       frames = np.concatenate(frames, axis=1).squeeze()
-      for i in range(min(10, FLAGS.batch_size//2)):
+      for i in range(FLAGS.batch_size//2):
         _plot_samples(frames[i:i+2], sample_dir+'hallucinate{}.pdf'.format(i), pad=None, t_range=[0,5*nsteps], n_columns=2, max_row=1)
 
 
