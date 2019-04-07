@@ -64,6 +64,14 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
 def lrelu(x, leak=0.2, name="lrelu"):
   return tf.maximum(x, leak*x)
 
+def _padding_size(dim, stride, kernel_size):
+    """
+    compute padding needed to maintain size in conv,
+    with given dimension size, stride, kernel size  
+    """
+    return [(dim * (stride - 1) + kernel_size - 1) // 2,
+            (dim * (stride - 1) + kernel_size - 2) // 2 + 1]
+
 def conv2d(inputs, kernel_size, stride, num_features, name, linear=False):
   with tf.variable_scope(name) as scope:
     input_channels = inputs.get_shape()[3]
@@ -71,7 +79,12 @@ def conv2d(inputs, kernel_size, stride, num_features, name, linear=False):
     weights = _variable_with_weight_decay('weights', shape=[kernel_size[0],kernel_size[1],input_channels,num_features],stddev=0.01, wd=FLAGS.weight_decay)
     biases = tf.get_variable('biases',[num_features], initializer=tf.constant_initializer(0.01))
 
-    conv = tf.nn.conv2d(inputs, weights, strides=[1, stride[0], stride[1], 1], padding='SAME')
+    # custom reflective padding to reduce edge artifacts
+    inputs = tf.pad(inputs, [[0, 0],
+                             _padding_size(inputs.get_shape()[1], stride[0], kernel_size[1]),
+                             _padding_size(inputs.get_shape()[2], stride[0], kernel_size[1]),
+                             [0, 0]], mode='REFLECT')
+    conv = tf.nn.conv2d(inputs, weights, strides=[1, stride[0], stride[1], 1], padding='VALID')
     conv_biased = tf.nn.bias_add(conv, biases)
     if linear:
       return conv_biased
