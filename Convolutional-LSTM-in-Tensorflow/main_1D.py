@@ -353,8 +353,8 @@ def train(with_gan=True, load_x=True, match_mask=False):
     y_unwrap = tf.transpose(y_unwrap, [1,0,2,3,4])
 
     if not match_mask:
-      past_loss_l2 = tf.nn.l2_loss(x_all[:, :-2, :,:,:] - x_unwrap[:, 1:, :,:,:])
-      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
+      past_loss_l2 = tf.nn.l2_loss(x_all[:, :-2, :,:,:] - x_unwrap[:, 1:, :,:,:]) * 5.e-4
+      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:, :,:,:]) * 5.e-4
       #past_loss_l2 = _binary_cross_entropy(x_all[:, :-2, :,:,:], x_unwrap[:, 1:, :,:,:])
       #future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start:,:,:,:], y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
     else:
@@ -386,7 +386,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       d_loss = d_loss_real + d_loss_fake
       g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                     logits=D_logits_, labels=tf.ones_like(D_)))
-      D3_loss = tf.nn.l2_loss(D3-D3_)
+      D3_loss = tf.nn.l2_loss(D3-D3_) * 1.e-4
       t_vars = tf.trainable_variables()
       d_vars = [var for var in t_vars if 'd_' in var.name]
       g_vars = [var for var in t_vars if 'd_' not in var.name]
@@ -395,7 +395,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       tf.summary.scalar('loss_feature', D3_loss)
 
       # loss def
-      loss = 1.e-3*(past_loss_l2 + future_loss_l2) + g_loss + D3_loss*1.e-4
+      loss = (past_loss_l2 + future_loss_l2) + g_loss + D3_loss
 
       tf.summary.scalar('past_loss_l2', past_loss_l2)
       tf.summary.scalar('future_loss_l2', future_loss_l2)
