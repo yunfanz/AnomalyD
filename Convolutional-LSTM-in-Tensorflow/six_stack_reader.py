@@ -61,9 +61,9 @@ def load_batch(batch_size, files, index, normalize='max'):
         batch = batch - np.amin(batch, axis=(2,3),keepdims=True)#*20.
         batch = batch/np.std(batch, axis=(2,3),keepdims=True)#*20.
     elif normalize == 'shift_std':
-        mean = np.mean(batch, axis=(2,3),keepdims=True)
-        batch = (batch - mean) / np.std(batch, axis=(2,3),keepdims=True)#*20.
-        batch += mean - np.amin(batch, axis=(2,3),keepdims=True)
+        batch -= np.mean(batch, axis=(2,3),keepdims=True)
+        batch /= np.std(batch, axis=(2,3),keepdims=True)#*20.
+        batch -= np.amin(batch, axis=(2,3),keepdims=True)
     elif normalize == 'noise':
         mask = batch < np.percentile(batch, q=95, axis=(2,3), keepdims=True)
         batch /= np.mean(batch*mask, axis=(2,3), keepdims=True)*5

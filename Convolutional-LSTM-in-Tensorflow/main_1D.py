@@ -31,7 +31,7 @@ tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
 # has been reformatted
 tf.app.flags.DEFINE_string('data_dir', '/datax/scratch/ayu/6-stacked',
                             """dir to load data""")
-tf.app.flags.DEFINE_string('norm_input', 'max',
+tf.app.flags.DEFINE_string('norm_input', 'shift_std',
                             """normalization for data""")
 tf.app.flags.DEFINE_string('train_data_index', './train_data',
                             """index to load train data""")
@@ -62,15 +62,15 @@ tf.app.flags.DEFINE_integer('print_every', 10,
 tf.app.flags.DEFINE_integer('save_every', 100,
                             """batch size for training""")
 tf.app.flags.DEFINE_boolean('resume', False,
-                            """whether to load saved wieghts""")
+                            """whether to load saved weights""")
 tf.app.flags.DEFINE_boolean('match_mask', False,
-                            """whether to load saved wieghts""")
-tf.app.flags.DEFINE_float('past_loss_coeff', 1e-3,
-                           """coefficient for past loss""")
-tf.app.flags.DEFINE_float('future_loss_coeff', 1e-3,
-                           """coefficient for future loss""")
-tf.app.flags.DEFINE_float('d3_loss_coeff', 1e-4,
-                           """coefficient for D3 loss""")
+                            """whether to load saved weights""")
+tf.app.flags.DEFINE_float('past_loss_weight', 8e-4,
+                           """weight for past loss""")
+tf.app.flags.DEFINE_float('future_loss_weight', 8e-4,
+                           """weight for future loss""")
+tf.app.flags.DEFINE_float('d3_loss_weight', 1e-4,
+                           """weight for D3 loss""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
 sample_dir = FLAGS.train_dir + '/samples/'
@@ -339,8 +339,8 @@ def train(with_gan=True, load_x=True, match_mask=False):
     y_unwrap = tf.transpose(y_unwrap, [1,0,2,3,4])
 
     if not match_mask:
-      past_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start-1:-1, :,:,:] - x_unwrap[:, FLAGS.seq_start:, :,:,:]) * FLAGS.past_loss_coeff
-      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:-1, :,:,:]) * FLAGS.future_loss_coeff
+      past_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start-1:-1, :,:,:] - x_unwrap[:, FLAGS.seq_start:, :,:,:]) * FLAGS.past_loss_weight
+      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:-1, :,:,:]) * FLAGS.future_loss_weight
       #past_loss_l2 = _binary_cross_entropy(x_all[:, :-2, :,:,:], x_unwrap[:, 1:, :,:,:])
       #future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start:,:,:,:], y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
     else:
@@ -372,7 +372,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
       d_loss = d_loss_real + d_loss_fake
       g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                     logits=D_logits_, labels=tf.ones_like(D_)))
-      D3_loss = tf.nn.l2_loss(D3-D3_) * FLAGS.d3_loss_coeff
+      D3_loss = tf.nn.l2_loss(D3-D3_) * FLAGS.d3_loss_weight
       t_vars = tf.trainable_variables()
       d_vars = [var for var in t_vars if 'd_' in var.name]
       g_vars = [var for var in t_vars if 'd_' not in var.name]
