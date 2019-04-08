@@ -55,6 +55,8 @@ tf.app.flags.DEFINE_float('keep_prob', 1.,
                             """for dropout""")
 tf.app.flags.DEFINE_float('lr', .001,
                             """for dropout""")
+tf.app.flags.DEFINE_float('l2_weight', 5.e-3,
+                            """for dropout""")
 tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
 tf.app.flags.DEFINE_integer('print_every', 10,
@@ -355,8 +357,8 @@ def train(with_gan=True, load_x=True, match_mask=False):
     y_unwrap = tf.transpose(y_unwrap, [1,0,2,3,4])
 
     if not match_mask:
-      past_loss_l2 = tf.nn.l2_loss(x_all[:, :-2, :,:,:] - x_unwrap[:, 1:, :,:,:]) * 5.e-4
-      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:, :,:,:]) * 5.e-4
+      past_loss_l2 = tf.nn.l2_loss(x_all[:, :-2, :,:,:] - x_unwrap[:, 1:, :,:,:]) * FLAGS.l2_weight
+      future_loss_l2 = tf.nn.l2_loss(x_all[:, FLAGS.seq_start:,:,:,:] - y_unwrap[:, FLAGS.seq_start-1:, :,:,:]) * FLAGS.l2_weight
       #past_loss_l2 = _binary_cross_entropy(x_all[:, :-2, :,:,:], x_unwrap[:, 1:, :,:,:])
       #future_loss_l2 = _binary_cross_entropy(x_all[:, FLAGS.seq_start:,:,:,:], y_unwrap[:, FLAGS.seq_start-1:, :,:,:])
     else:
