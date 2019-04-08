@@ -63,6 +63,8 @@ tf.app.flags.DEFINE_integer('save_every', 100,
                             """batch size for training""")
 tf.app.flags.DEFINE_boolean('resume', False,
                             """whether to load saved wieghts""")
+tf.app.flags.DEFINE_boolean('match_mask', False,
+                            """whether to load saved wieghts""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
 sample_dir = FLAGS.train_dir + '/samples/'
@@ -185,11 +187,11 @@ def network_2d(inputs, encoder_state, past_state, future_state):
   # # future output
   y_1 = ld.transpose_conv_layer(fconv3, (4,4), (1,1), 1, "future_output", True)
 
-  x_1_s = tf.nn.sigmoid(x_1)
-  y_1_s = tf.nn.sigmoid(y_1)
+  #x_1_s = tf.nn.sigmoid(x_1)
+  #y_1_s = tf.nn.sigmoid(y_1)
   #x_1 = pconv3; y_1 = fconv3
   #import IPython; IPython.embed()
-  return x_1_s, y_1_s, encoder_state, past_state, future_state
+  return x_1, y_1, encoder_state, past_state, future_state
 
 # make a template for reuse
 network_template = tf.make_template('network', network_2d)
