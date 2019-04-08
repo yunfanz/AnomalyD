@@ -1,4 +1,5 @@
 import tensorflow as tf
+from layer_def import reflective_pad_2d
 
 class ConvRNNCell(object):
   """Abstract object representing an Convolutional RNN cell.
@@ -128,9 +129,11 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
     matrix = tf.get_variable(
         "Matrix", [filter_size[0], filter_size[1], total_arg_size_depth, num_features], dtype=dtype)
     if len(args) == 1:
-      res = tf.nn.conv2d(args[0], matrix, strides=[1, 1, 1, 1], padding='SAME')
+      args = reflective_pad_2d(args, [1,1,1,1], filter_size)
+      res = tf.nn.conv2d(args[0], matrix, strides=[1, 1, 1, 1], padding='VALID')
     else:
-      res = tf.nn.conv2d(tf.concat(axis=3, values=args), matrix, strides=[1, 1, 1, 1], padding='SAME')
+      args = reflective_pad_2d(tf.concat(axis=3, values=args), [1,1,1,1], filter_size)
+      res = tf.nn.conv2d(args, matrix, strides=[1, 1, 1, 1], padding='VALID')
     if not bias:
       return res
     bias_term = tf.get_variable(

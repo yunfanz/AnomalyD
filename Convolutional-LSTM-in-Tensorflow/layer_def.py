@@ -72,6 +72,13 @@ def _padding_size(dim, stride, kernel_size):
     return [(dim * (stride - 1) + kernel_size - 1) // 2,
             (dim * (stride - 1) + kernel_size - 2) // 2 + 1]
 
+def reflective_pad_2d(inputs, stride, kernel_size):
+    """ pad given 4D tensor (batch, height, width, channels) reflectively """
+    return tf.pad(inputs, [[0, 0],
+                           _padding_size(inputs.get_shape()[1], stride[0], kernel_size[0]),
+                           _padding_size(inputs.get_shape()[2], stride[1], kernel_size[1]),
+                           [0, 0]], mode='REFLECT')
+
 def conv2d(inputs, kernel_size, stride, num_features, name, linear=False):
   with tf.variable_scope(name) as scope:
     input_channels = inputs.get_shape()[3]
@@ -80,10 +87,8 @@ def conv2d(inputs, kernel_size, stride, num_features, name, linear=False):
     biases = tf.get_variable('biases',[num_features], initializer=tf.constant_initializer(0.01))
 
     # custom reflective padding to reduce edge artifacts
-    inputs = tf.pad(inputs, [[0, 0],
-                             _padding_size(inputs.get_shape()[1], stride[0], kernel_size[1]),
-                             _padding_size(inputs.get_shape()[2], stride[0], kernel_size[1]),
-                             [0, 0]], mode='REFLECT')
+    if stride != [1, 1] or kernel_size != [1, 1]:
+        inputs = reflective_pad_2d(inputs, stride, kernel_size)
     conv = tf.nn.conv2d(inputs, weights, strides=[1, stride[0], stride[1], 1], padding='VALID')
     conv_biased = tf.nn.bias_add(conv, biases)
     if linear:

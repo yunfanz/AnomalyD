@@ -65,11 +65,11 @@ tf.app.flags.DEFINE_boolean('resume', False,
                             """whether to load saved weights""")
 tf.app.flags.DEFINE_boolean('match_mask', False,
                             """whether to load saved weights""")
-tf.app.flags.DEFINE_float('past_loss_weight', 8e-4,
+tf.app.flags.DEFINE_float('past_loss_weight', 5e-5,
                            """weight for past loss""")
-tf.app.flags.DEFINE_float('future_loss_weight', 8e-4,
+tf.app.flags.DEFINE_float('future_loss_weight', 5e-5,
                            """weight for future loss""")
-tf.app.flags.DEFINE_float('d3_loss_weight', 1e-4,
+tf.app.flags.DEFINE_float('d3_loss_weight', 1e-5,
                            """weight for D3 loss""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
@@ -148,7 +148,7 @@ def network(inputs, hidden, lstm_depth=4):
 
 def network_2d(inputs, encoder_state, past_state, future_state):
   #inputs is 3D tensor (batch, )
-  conv = ld.conv2d(inputs, (4,4), (1,1), 8, "encode")
+  conv = ld.conv2d(inputs, [1,1], [1,1], 8, "encode")
   #conv = inputs
   # encoder convlstm 
   with tf.variable_scope('conv_lstm_encoder_1', initializer=tf.contrib.layers.xavier_initializer(uniform=True)):
@@ -189,9 +189,9 @@ def network_2d(inputs, encoder_state, past_state, future_state):
     fcell3 = BasicConvLSTMCell2d([16, 128], [8, 8], 8)
     fconv3, future_state = fcell3(conv3, future_state)
   # present output
-  x_1 = ld.transpose_conv_layer(pconv3, (4,4), (1,1), 1, "present_output", True)
+  x_1 = ld.conv2d(pconv3, [1,1], [1,1], 1, "present_output", True)
   # # future output
-  y_1 = ld.transpose_conv_layer(fconv3, (4,4), (1,1), 1, "future_output", True)
+  y_1 = ld.conv2d(fconv3, [1,1], [1,1], 1, "future_output", True)
 
   #x_1_s = tf.nn.sigmoid(x_1)
   #y_1_s = tf.nn.sigmoid(y_1)
@@ -207,14 +207,14 @@ def discriminator(image, df_dim=16, reuse=False, fc_shape=None):
     if reuse:
       scope.reuse_variables() # 80 128
     h0 = ld.conv2d(image, (3, 3),(1,1),df_dim, name='d_h0_conv') 
-    h0 = ld.conv2d(image, (3, 3),(1,2),df_dim, name='d_h00_conv') # 80 64
-    h1 = ld.conv2d(h0, (3, 3),(1,1),df_dim*2, name='d_h1_conv') 
-    h2 = ld.conv2d(h1, (3, 3),(2,2),df_dim*2, name='d_h11_conv') # 40 32
-    h2 = ld.conv2d(h1, (3, 3),(1,1),df_dim*4, name='d_h2_conv')
-    h2 = ld.conv2d(h1, (3, 3),(2,2),df_dim*4, name='d_h22_conv') # 20 16
-    h3 = ld.conv2d(h2, (3, 3),(1,1),df_dim*8, name='d_h3_conv') 
-    h3 = ld.conv2d(h2, (3, 3),(2,2),df_dim*8, name='d_h33_conv') # 10 8 
-    h4 = ld.conv2d(h3, (3, 3),(1,1),df_dim*16, name='d_h4_conv') 
+    h00 = ld.conv2d(h0, (3, 3),(1,2),df_dim, name='d_h00_conv') # 80 64
+    h1 = ld.conv2d(h00, (3, 3),(1,1),df_dim*2, name='d_h1_conv') 
+    h11 = ld.conv2d(h1, (3, 3),(2,2),df_dim*2, name='d_h11_conv') # 40 32
+    h2 = ld.conv2d(h11, (3, 3),(1,1),df_dim*4, name='d_h2_conv')
+    h22 = ld.conv2d(h2, (3, 3),(2,2),df_dim*4, name='d_h22_conv') # 20 16
+    h3 = ld.conv2d(h22, (3, 3),(1,1),df_dim*8, name='d_h3_conv') 
+    h33 = ld.conv2d(h3, (3, 3),(2,2),df_dim*8, name='d_h33_conv') # 10 8 
+    h4 = ld.conv2d(h33, (3, 3),(1,1),df_dim*16, name='d_h4_conv') 
     h5 = ld.conv2d(h4, (3, 3),(2,2),df_dim*16, name='d_h5_conv') # 5 4
 
     #import IPython; IPython.embed()
@@ -358,9 +358,12 @@ def train(with_gan=True, load_x=True, match_mask=False):
     if with_gan:
       img = x_all[:,FLAGS.seq_start:,:,:,:]
       img_ = y_unwrap[:, :-1, :,:,:]
-      collapsed_shape = [-1, 16 * (FLAGS.seq_length - FLAGS.seq_start), 128, 1]
-      img = tf.reshape(img, collapsed_shape)
-      img_ = tf.reshape(img_, collapsed_shape)
+      # cut off channel dimension and use the 6 stack hidden dim as channel
+      shape_no_chnl = [-1, (FLAGS.seq_length - FLAGS.seq_start), 16, 128]
+      img = tf.reshape(img, shape_no_chnl)
+      img_ = tf.reshape(img_, shape_no_chnl)
+      img = tf.transpose(img, [0, 2, 3, 1])
+      img_ = tf.transpose(img_, [0, 2, 3, 1])
       #import IPython; IPython.embed(i)
       D, D_logits, D3 = discriminator(img, reuse=False)
       #import IPython; IPython.embed()
