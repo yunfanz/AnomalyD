@@ -59,15 +59,15 @@ tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
 tf.app.flags.DEFINE_integer('print_every', 10,
                             """batch size for training""")
-tf.app.flags.DEFINE_integer('save_every', 100,
+tf.app.flags.DEFINE_integer('save_every', 50,
                             """batch size for training""")
 tf.app.flags.DEFINE_boolean('resume', False,
                             """whether to load saved weights""")
 tf.app.flags.DEFINE_boolean('match_mask', False,
                             """whether to load saved weights""")
-tf.app.flags.DEFINE_float('past_loss_weight', 5e-5,
+tf.app.flags.DEFINE_float('past_loss_weight', 2e-4,
                            """weight for past loss""")
-tf.app.flags.DEFINE_float('future_loss_weight', 5e-5,
+tf.app.flags.DEFINE_float('future_loss_weight', 2e-4,
                            """weight for future loss""")
 tf.app.flags.DEFINE_float('d3_loss_weight', 1e-5,
                            """weight for D3 loss""")
@@ -201,21 +201,21 @@ def network_2d(inputs, encoder_state, past_state, future_state):
 
 # make a template for reuse
 network_template = tf.make_template('network', network_2d)
-def discriminator(image, df_dim=16, reuse=False, fc_shape=None):
+def discriminator(image, df_dim=5, reuse=False, fc_shape=None):
   # the discriminator network
   with tf.variable_scope("discriminator") as scope:
     if reuse:
-      scope.reuse_variables() # 80 128
+      scope.reuse_variables() # 16 128
     h0 = ld.conv2d(image, (3, 3),(1,1),df_dim, name='d_h0_conv') 
-    h00 = ld.conv2d(h0, (3, 3),(1,2),df_dim, name='d_h00_conv') # 80 64
+    h00 = ld.conv2d(h0, (3, 3),(1,2),df_dim, name='d_h00_conv') # 16 64
     h1 = ld.conv2d(h00, (3, 3),(1,1),df_dim*2, name='d_h1_conv') 
-    h11 = ld.conv2d(h1, (3, 3),(2,2),df_dim*2, name='d_h11_conv') # 40 32
+    h11 = ld.conv2d(h1, (3, 3),(1,2),df_dim*2, name='d_h11_conv') # 16 32
     h2 = ld.conv2d(h11, (3, 3),(1,1),df_dim*4, name='d_h2_conv')
-    h22 = ld.conv2d(h2, (3, 3),(2,2),df_dim*4, name='d_h22_conv') # 20 16
+    h22 = ld.conv2d(h2, (3, 3),(1,2),df_dim*4, name='d_h22_conv') # 16 16
     h3 = ld.conv2d(h22, (3, 3),(1,1),df_dim*8, name='d_h3_conv') 
-    h33 = ld.conv2d(h3, (3, 3),(2,2),df_dim*8, name='d_h33_conv') # 10 8 
+    h33 = ld.conv2d(h3, (3, 3),(2,2),df_dim*8, name='d_h33_conv') # 8 8 
     h4 = ld.conv2d(h33, (3, 3),(1,1),df_dim*16, name='d_h4_conv') 
-    h5 = ld.conv2d(h4, (3, 3),(2,2),df_dim*16, name='d_h5_conv') # 5 4
+    h5 = ld.conv2d(h4, (3, 3),(2,2),df_dim*16, name='d_h5_conv') # 4 4
 
     #import IPython; IPython.embed()
     h6 = ld.fc_layer(h5, 1, name='d_h6_lin', linear=True, flat=True, input_shape=fc_shape) # 1 1
@@ -438,7 +438,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
     files = find_files(FLAGS.train_data_index)
     for step in range(FLAGS.max_step):
       dat = load_batch(FLAGS.batch_size, files, step, normalize=FLAGS.norm_input)
-      dat = random_flip(dat)
+      #dat = random_flip(dat)
       t = time.time()
       errG, errD = sess.run([g_loss, d_loss], feed_dict={x_all:dat, keep_prob:FLAGS.keep_prob})
       if errG > 0.6 and errD>0.6:
