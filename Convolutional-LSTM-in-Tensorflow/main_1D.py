@@ -29,9 +29,9 @@ tf.app.flags.DEFINE_string('train_dir', './checkpoints/gan-loss',
                             """dir to store trained net""")
 # note: /datax/scratch/ayu/6-stacked is NOT same as /datax/scratch/yzhang/6-stacked
 # has been reformatted
-tf.app.flags.DEFINE_string('data_dir', '/datax/scratch/ayu/6-stacked',
+tf.app.flags.DEFINE_string('data_dir', '/datax/scratch/ayu/6-stacked-max200',
                             """dir to load data""")
-tf.app.flags.DEFINE_string('norm_input', 'shift_std',
+tf.app.flags.DEFINE_string('norm_input', 'std',
                             """normalization for data""")
 tf.app.flags.DEFINE_string('train_data_index', './train_data',
                             """index to load train data""")
@@ -58,18 +58,20 @@ tf.app.flags.DEFINE_float('lr', .001,
 tf.app.flags.DEFINE_integer('batch_size', 32,
                             """batch size for training""")
 tf.app.flags.DEFINE_integer('print_every', 10,
-                            """batch size for training""")
+                            """print loss every ... steps""")
 tf.app.flags.DEFINE_integer('save_every', 50,
-                            """batch size for training""")
+                            """save model and sample ever ... steps""")
 tf.app.flags.DEFINE_boolean('resume', False,
                             """whether to load saved weights""")
+tf.app.flags.DEFINE_boolean('export', False,
+                            """whether to export tensorflow model to models/. Only if --resume also set""")
 tf.app.flags.DEFINE_boolean('match_mask', False,
                             """whether to load saved weights""")
-tf.app.flags.DEFINE_float('past_loss_weight', 2e-4,
+tf.app.flags.DEFINE_float('past_loss_weight', 1e-3,
                            """weight for past loss""")
-tf.app.flags.DEFINE_float('future_loss_weight', 2e-4,
+tf.app.flags.DEFINE_float('future_loss_weight', 1e-3,
                            """weight for future loss""")
-tf.app.flags.DEFINE_float('d3_loss_weight', 1e-5,
+tf.app.flags.DEFINE_float('d3_loss_weight', 4e-4,
                            """weight for D3 loss""")
 #fourcc = cv2.cv.CV_FOURCC('m', 'p', '4', 'v') 
 
@@ -429,6 +431,15 @@ def train(with_gan=True, load_x=True, match_mask=False):
           sys.exit(1)
       print("resume", latest)
       saver.restore(sess, latest)
+      if FLAGS.export:
+          export_dir = os.path.join('models', time.strftime("%Y%m%d-%H%M%S"))
+          builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
+          builder.add_meta_graph_and_variables(sess,
+                  [tf.saved_model.tag_constants.TRAINING],
+                  strip_default_attrs=True)
+          builder.add_meta_graph([tf.saved_model.tag_constants.SERVING], strip_default_attrs=True)
+          builder.save()
+          sys.exit(0)
     else:
       print("init network from scratch")
     
@@ -493,7 +504,7 @@ def train(with_gan=True, load_x=True, match_mask=False):
         if match_mask:
             im_x = im_x[...,1]
             im_y = im_y[...,1]
-        _plot_samples(dat, im_x, im_y, '%05d' % step)
+        _plot_samples(dat, im_x, im_y, '%06d' % step)
         print(" - saved")
  
 def _plot_roc(data, percent, save):

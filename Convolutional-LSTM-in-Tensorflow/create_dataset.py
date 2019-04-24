@@ -1,3 +1,4 @@
+""" creates ''flat'' dataset so that each file is a stack of 6 images """
 import glob, os
 import numpy as np
 import fnmatch
@@ -8,18 +9,8 @@ MAX_SAMP = 200
 
 if not os.path.exists(OUT_PATH):
     os.makedirs(OUT_PATH)
-def find_files(directory, pattern='*.png', sortby="shuffle"):
-    '''Recursively finds all files matching the pattern.'''
-    files = []
-    for root, dirnames, filenames in os.walk(directory):
-        for filename in fnmatch.filter(filenames, pattern):
-            files.append(os.path.join(root, filename))
 
-    if sortby == 'auto':
-        files = np.sort(files)
-    elif sortby == 'shuffle':
-        np.random.shuffle(files)
-    return files
+from create_dataset_eval import find_files
 
 #files = glob.glob(os.path.join(DATA_PATH, DATA_FMT))
 files = find_files(DATA_PATH, pattern=DATA_FMT)

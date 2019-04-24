@@ -69,8 +69,10 @@ def _padding_size(dim, stride, kernel_size):
     compute padding needed to maintain size in conv,
     with given dimension size, stride, kernel size  
     """
-    return [(dim * (stride - 1) + kernel_size - 1) // 2,
-            (dim * (stride - 1) + kernel_size - 2) // 2 + 1]
+    #return [(dim * (stride - 1) + kernel_size - 1) // 2,
+    #        (dim * (stride - 1) + kernel_size - 2) // 2 + 1]
+    return [(kernel_size - 1) // 2,
+            (kernel_size - 2) // 2 + 1]
 
 def reflective_pad_2d(inputs, stride, kernel_size):
     """ pad given 4D tensor (batch, height, width, channels) reflectively """
@@ -161,4 +163,23 @@ def fc_layer(inputs, hiddens, name, flat=False, linear=False, input_shape=None):
   
     ip = tf.add(tf.matmul(inputs_processed,weights),biases)
     return tf.nn.elu(ip,name=name)
-    
+
+def spatial_pyramid_pool(inputs, pool_sz, out_features, name):
+    ''' convert to pyramid pool upsampled and stacked over channel dimension '''
+    pool_results = []
+    inputs_shape = inputs.get_shape().as_list()
+    for i in range(len(pool_sz)):
+        with tf.variable_scope(name + str(i)) as scope:
+            stride_x = inputs_shape[2] // pool_sz[i]
+            stride_y = inputs_shape[1] // pool_sz[i]
+            max_pool = tf.nn.max_pool(inputs,
+                                       ksize=[1, stride_y, stride_x, 1],
+                                       strides=[1, stride_y, stride_x, 1],
+                                       padding='VALID')
+            if pool_sz[i] != 1:
+                max_pool_conv = conv2d(max_pool, (3, 3), (1, 1), out_features, name + '_mconv_p{}'.format(i))
+            else:
+                max_pool_conv = conv2d(max_pool, (1, 1), (1, 1), out_features, name + '_mconv_p{}'.format(i))
+            max_pool_up = tf.image.resize_bilinear(max_pool_conv, [inputs_shape[1], inputs_shape[2]])
+            pool_results.append(max_pool_up)
+    return tf.concat(pool_results, axis=3)
